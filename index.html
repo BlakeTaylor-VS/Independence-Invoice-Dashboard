@@ -191,6 +191,7 @@ tfoot td.num-col { text-align: right; }
   <button class="nav-tab active" onclick="switchTab('dashboard')">Invoices</button>
   <button class="nav-tab" onclick="switchTab('agency')">By Agency</button>
   <button class="nav-tab" onclick="switchTab('log')">Activity Log</button>
+  <button class="nav-tab" onclick="switchTab('cfo')">CFO Report</button>
   <button class="nav-tab" onclick="switchTab('upload')">Upload</button>
   <button class="nav-tab" onclick="switchTab('ask-ai')">Ask AI</button>
   <button class="nav-tab" onclick="switchTab('history')">History</button>
@@ -495,6 +496,105 @@ tfoot td.num-col { text-align: right; }
     <div style="margin-top:32px;padding-top:24px;border-top:1px solid var(--line)">
       <div class="log-section-label">Past sessions (this device)</div>
       <div id="log-history-list" style="font-family:var(--sans);font-size:12.5px;color:#6b6357"></div>
+    </div>
+  </div>
+
+  <!-- CFO REPORT TAB -->
+  <div class="tab-panel" id="tab-cfo">
+    <div class="dash-header">
+      <div>
+        <div class="dash-eyebrow">Independence Health Contractors</div>
+        <h1 class="dash-title">CFO Report</h1>
+      </div>
+      <div class="dash-meta" id="cfo-meta"></div>
+    </div>
+
+    <!-- Report type -->
+    <div class="log-session-bar" style="margin-bottom:18px">
+      <div>
+        <span class="field-label" style="display:inline-block;margin-bottom:0;margin-right:10px">Report type:</span>
+        <div class="pill-group" style="display:inline-flex">
+          <button class="pill active" data-cfo="monday" onclick="setCfoType(this)">Monday Report</button>
+          <button class="pill" data-cfo="thursday" onclick="setCfoType(this)">Thursday Report</button>
+        </div>
+      </div>
+      <div style="margin-left:auto;font-family:var(--sans);font-size:12px;color:#8a8174" id="cfo-date-display"></div>
+    </div>
+
+    <!-- KPI summary auto-pulled from dashboard -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--ink);border:1px solid var(--ink);margin-bottom:18px">
+      <div style="background:var(--paper);padding:12px 18px">
+        <div class="sum-label">Total outstanding</div>
+        <div class="sum-val rust" id="cfo-total-open" style="font-size:20px">—</div>
+      </div>
+      <div style="background:var(--paper);padding:12px 18px">
+        <div class="sum-label">Agencies with open balance</div>
+        <div class="sum-val" id="cfo-agency-count" style="font-size:20px">—</div>
+      </div>
+      <div style="background:var(--paper);padding:12px 18px">
+        <div class="sum-label">At 60+ days (suspension tier)</div>
+        <div class="sum-val rust" id="cfo-sixty-count" style="font-size:20px">—</div>
+      </div>
+      <div style="background:var(--paper);padding:12px 18px">
+        <div class="sum-label">Invoices paid in full</div>
+        <div class="sum-val paid-color" id="cfo-paid-count" style="font-size:20px">—</div>
+      </div>
+    </div>
+
+    <!-- Section 1: Collections -->
+    <div class="log-section-label">1 — Collections since last report</div>
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+      <input class="ctrl-input" id="cfo-collected-agency" placeholder="Agency name" style="min-width:200px">
+      <input class="ctrl-input" id="cfo-collected-amount" placeholder="Amount collected" type="number" style="min-width:140px">
+      <button class="btn-primary" onclick="addCfoPayment()" style="padding:7px 16px;font-size:12px">+ Add</button>
+    </div>
+    <div id="cfo-payments-list" style="margin-bottom:6px"></div>
+    <div style="font-family:var(--sans);font-size:12px;color:#8a8174;margin-bottom:18px">Total collected this period: <strong id="cfo-collected-total" style="color:var(--paid)">$0.00</strong></div>
+
+    <!-- Section 2: Outstanding by agency - auto populated -->
+    <div class="log-section-label">2 — Outstanding balance by agency (auto-populated)</div>
+    <div class="table-wrap" style="margin-bottom:18px">
+      <table style="min-width:500px">
+        <thead>
+          <tr>
+            <th style="cursor:default">Agency</th>
+            <th style="cursor:default;text-align:right">Open Balance</th>
+            <th style="cursor:default">Escalation Tier</th>
+            <th style="cursor:default">Joe's Status Note</th>
+          </tr>
+        </thead>
+        <tbody id="cfo-agency-tbody"></tbody>
+      </table>
+    </div>
+
+    <!-- Section 3: AP Activity summary -->
+    <div class="log-section-label">3 — AP activity summary (from Christine's last log)</div>
+    <textarea class="ctrl-input" id="cfo-ap-summary" placeholder="e.g. Christine sent 14 emails and 8 texts this period. ABL responded — promised payment by June 25. Sunbright unresponsive for 3 weeks." style="width:100%;min-height:80px;resize:vertical;font-size:13px;line-height:1.5;padding:10px;margin-bottom:18px"></textarea>
+
+    <!-- Section 4: Escalation status -->
+    <div class="log-section-label">4 — Escalation decisions & status changes</div>
+    <textarea class="ctrl-input" id="cfo-escalation" placeholder="e.g. ABL Health Care moved to 50-day final warning — Joe approved email. Sunbright at 60 days — recommending service suspension pending owner approval." style="width:100%;min-height:80px;resize:vertical;font-size:13px;line-height:1.5;padding:10px;margin-bottom:18px"></textarea>
+
+    <!-- Section 5: Flags for owner -->
+    <div class="log-section-label">5 — Flags & notes for owner</div>
+    <textarea class="ctrl-input" id="cfo-flags" placeholder="e.g. Mary's Help HH has $53K outstanding across 3 months — recommend owner call. BLC paid Feb balance but June invoice still open." style="width:100%;min-height:80px;resize:vertical;font-size:13px;line-height:1.5;padding:10px;margin-bottom:18px"></textarea>
+
+    <!-- Section 6: Action plan -->
+    <div class="log-section-label">6 — Action plan for next 3–4 days</div>
+    <textarea class="ctrl-input" id="cfo-action-plan" placeholder="e.g. Mon: Christine sends batch emails to all 30+ day agencies. Tue: Follow up with ABL and Sunbright directly. Wed: Review any responses, update balances. Thu: Send next report to owner." style="width:100%;min-height:100px;resize:vertical;font-size:13px;line-height:1.5;padding:10px;margin-bottom:18px"></textarea>
+
+    <!-- Actions -->
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <button class="btn-primary" onclick="copyCfoReport()" style="font-size:13px">⎘ Copy PDF Report</button>
+      <button class="btn-default" onclick="downloadCfoPdf()" style="font-size:13px">↓ Download PDF</button>
+      <button class="btn-default" onclick="clearCfoReport()" style="font-size:13px;color:var(--rust)">Clear Report</button>
+      <span id="cfo-status" style="font-family:var(--sans);font-size:12px;color:var(--teal);font-weight:700"></span>
+    </div>
+
+    <!-- Past CFO reports -->
+    <div style="margin-top:32px;padding-top:24px;border-top:1px solid var(--line)">
+      <div class="log-section-label">Past CFO reports (this device)</div>
+      <div id="cfo-history-list" style="font-family:var(--sans);font-size:12.5px;color:#6b6357"></div>
     </div>
   </div>
 
@@ -1206,8 +1306,212 @@ function initLog() {
   renderLogChecklist();
   renderLogHistory();
 }
+// ── CFO REPORT ────────────────────────────────────────────────────────────────
+let cfoType = 'monday';
+let cfoPayments = [];
+let cfoNotes = {};
+
+function setCfoType(btn) {
+  document.querySelectorAll('#tab-cfo .log-session-bar .pill').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  cfoType = btn.dataset.cfo;
+  document.getElementById('cfo-meta').textContent = 'For owner review — ' + (cfoType === 'monday' ? 'Monday' : 'Thursday');
+}
+
+function initCfoReport() {
+  const today = new Date();
+  const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  document.getElementById('cfo-date-display').textContent = days[today.getDay()] + ', ' + today.toLocaleDateString('en-US', {month:'long',day:'numeric',year:'numeric'});
+  document.getElementById('cfo-meta').textContent = 'For owner review — ' + (cfoType === 'monday' ? 'Monday' : 'Thursday');
+
+  const totalOpen = DATA.reduce((s,r)=>s+r.open,0);
+  const agenciesOpen = Object.keys(groupByAgency(DATA.filter(r=>r.open>0))).length;
+  const sixtyPlus = Object.entries(groupByAgency(DATA.filter(r=>r.open>0))).filter(([,invs])=>agencyMaxDays(invs)>=60).length;
+  const paidCount = DATA.filter(r=>r.open<=0).length;
+  document.getElementById('cfo-total-open').textContent = fmtShort(totalOpen);
+  document.getElementById('cfo-agency-count').textContent = agenciesOpen;
+  document.getElementById('cfo-sixty-count').textContent = sixtyPlus;
+  document.getElementById('cfo-paid-count').textContent = paidCount + ' / ' + DATA.length;
+
+  const agencyMap = groupByAgency(DATA.filter(r=>r.open>0));
+  const agencies = Object.entries(agencyMap).sort((a,b)=>agencyMaxDays(b[1])-agencyMaxDays(a[1]));
+  const tbody = document.getElementById('cfo-agency-tbody');
+  tbody.innerHTML = '';
+  agencies.forEach(([name, invoices]) => {
+    const totalAgOpen = invoices.reduce((s,r)=>s+r.open,0);
+    const maxDays = agencyMaxDays(invoices);
+    const note = cfoNotes[name] || '';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="font-weight:600;font-size:13px">${name}</td>
+      <td style="text-align:right;color:var(--rust);font-weight:600;font-variant-numeric:tabular-nums">${fmt(totalAgOpen)}</td>
+      <td>${daysBadge(maxDays)}</td>
+      <td><input class="log-note" type="text" value="${note.replace(/"/g,'&quot;')}" placeholder="Status, promise, dispute…" onchange="cfoNotes['${name.replace(/'/g,"\\'")}'] = this.value"></td>
+    `;
+    tbody.appendChild(tr);
+  });
+  renderCfoHistory();
+}
+
+function addCfoPayment() {
+  const agency = document.getElementById('cfo-collected-agency').value.trim();
+  const amount = parseFloat(document.getElementById('cfo-collected-amount').value);
+  if (!agency || !amount) { showToast('Enter agency and amount', 'var(--gold)'); return; }
+  cfoPayments.push({ agency, amount });
+  document.getElementById('cfo-collected-agency').value = '';
+  document.getElementById('cfo-collected-amount').value = '';
+  renderCfoPayments();
+}
+
+function removeCfoPayment(idx) { cfoPayments.splice(idx,1); renderCfoPayments(); }
+
+function renderCfoPayments() {
+  const el = document.getElementById('cfo-payments-list');
+  el.innerHTML = '';
+  cfoPayments.forEach((p,i) => {
+    const span = document.createElement('span');
+    span.className = 'payment-tag';
+    span.innerHTML = `${p.agency}: ${fmt(p.amount)} <button onclick="removeCfoPayment(${i})">×</button>`;
+    el.appendChild(span);
+  });
+  document.getElementById('cfo-collected-total').textContent = fmt(cfoPayments.reduce((s,p)=>s+p.amount,0));
+}
+
+function buildCfoReport() {
+  const today = new Date().toLocaleDateString('en-US', {weekday:'long',month:'long',day:'numeric',year:'numeric'});
+  const type = cfoType === 'monday' ? 'Monday' : 'Thursday';
+  const totalOpen = DATA.reduce((s,r)=>s+r.open,0);
+  const collectedTotal = cfoPayments.reduce((s,p)=>s+p.amount,0);
+  const agencyMap = groupByAgency(DATA.filter(r=>r.open>0));
+
+  const agencyLines = Object.entries(agencyMap)
+    .sort((a,b)=>agencyMaxDays(b[1])-agencyMaxDays(a[1]))
+    .map(([name,invs]) => {
+      const open = invs.reduce((s,r)=>s+r.open,0);
+      const d = agencyMaxDays(invs);
+      const tier = d>=60?'60+ DAYS — SUSPENSION':d>=50?'50 days — Final warning':d>=40?'40 days — Urgent':d>=30?'30 days — Notice':'<30 days';
+      const note = cfoNotes[name] ? '\n      Status: ' + cfoNotes[name] : '';
+      return `  • ${name} — ${fmt(open)} — ${tier}${note}`;
+    }).join('\n');
+
+  const collectedLines = cfoPayments.length
+    ? cfoPayments.map(p=>`  • ${p.agency}: ${fmt(p.amount)}`).join('\n') + `\n\n  TOTAL COLLECTED THIS PERIOD: ${fmt(collectedTotal)}`
+    : '  None reported this period';
+
+  return `╔══════════════════════════════════════════════════════╗
+  INDEPENDENCE HEALTH CONTRACTORS
+  CFO REPORT — ${type.toUpperCase()} — ${today}
+  Prepared by: Joe [Last Name], CFO
+  For: Owner Review
+╚══════════════════════════════════════════════════════╝
+
+DASHBOARD SNAPSHOT
+  Total outstanding: ${fmt(totalOpen)}
+  Agencies with open invoices: ${Object.keys(agencyMap).length}
+  Agencies at 60+ days (suspension tier): ${Object.entries(agencyMap).filter(([,i])=>agencyMaxDays(i)>=60).length}
+
+════════════════════════════════════════════════════════
+1. COLLECTIONS SINCE LAST REPORT
+════════════════════════════════════════════════════════
+${collectedLines}
+
+════════════════════════════════════════════════════════
+2. OUTSTANDING BALANCE BY AGENCY
+════════════════════════════════════════════════════════
+${agencyLines}
+
+════════════════════════════════════════════════════════
+3. AP ACTIVITY SUMMARY (CHRISTINE)
+════════════════════════════════════════════════════════
+${document.getElementById('cfo-ap-summary').value.trim() || 'No summary entered'}
+
+════════════════════════════════════════════════════════
+4. ESCALATION DECISIONS & STATUS CHANGES
+════════════════════════════════════════════════════════
+${document.getElementById('cfo-escalation').value.trim() || 'No escalation updates'}
+
+════════════════════════════════════════════════════════
+5. FLAGS & NOTES FOR OWNER
+════════════════════════════════════════════════════════
+${document.getElementById('cfo-flags').value.trim() || 'None'}
+
+════════════════════════════════════════════════════════
+6. ACTION PLAN — NEXT 3–4 DAYS
+════════════════════════════════════════════════════════
+${document.getElementById('cfo-action-plan').value.trim() || 'No action plan entered'}
+
+════════════════════════════════════════════════════════
+Independence Health Contractors
+Joe [Last Name], CFO — ihc.cfo@gmail.com
+AP: Christine — AP@independencehealthc.com | (513) 532-9819`;
+}
+
+function copyCfoReport() {
+  const report = buildCfoReport();
+  navigator.clipboard.writeText(report).then(() => {
+    document.getElementById('cfo-status').textContent = '✓ Copied — paste into email or text to owner';
+    showToast('CFO report copied to clipboard ✓');
+    saveCfoHistory(report);
+  }).catch(() => showToast('Copy failed', 'var(--rust)'));
+}
+
+function downloadCfoPdf() {
+  const report = buildCfoReport();
+  const today = new Date().toLocaleDateString('en-US', {month:'2-digit',day:'2-digit',year:'numeric'}).replace(/\//g,'-');
+  const type = cfoType === 'monday' ? 'Monday' : 'Thursday';
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>CFO Report ${type} ${today}</title>
+<style>body{font-family:'Helvetica Neue',Arial,sans-serif;font-size:13px;color:#1c2b2d;max-width:760px;margin:40px auto;padding:0 24px;line-height:1.7}
+h1{font-size:20px;font-weight:600;margin-bottom:4px}.eyebrow{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#2f6e62;font-weight:700;margin-bottom:6px}
+.meta{font-size:12px;color:#6b6357;margin-bottom:24px}pre{white-space:pre-wrap;font-family:inherit;font-size:12px;background:#f6f3ec;padding:14px;border:1px solid #d8d0bd}
+.footer{margin-top:28px;padding-top:12px;border-top:1px solid #d8d0bd;font-size:11px;color:#8a8174}
+@media print{body{margin:20px}}</style></head><body>
+<div class="eyebrow">Independence Health Contractors</div>
+<h1>CFO Report — ${type}, ${today}</h1>
+<div class="meta">Prepared by: Joe [Last Name], CFO &nbsp;·&nbsp; For: Owner Review</div>
+<pre>${report.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>
+<div class="footer">Independence Health Contractors &nbsp;·&nbsp; ihc.cfo@gmail.com &nbsp;·&nbsp; AP@independencehealthc.com | (513) 532-9819</div>
+</body></html>`;
+  const blob = new Blob([html], {type:'text/html'});
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, '_blank');
+  if (win) { setTimeout(() => win.print(), 800); }
+  document.getElementById('cfo-status').textContent = '✓ Print dialog opened — choose Save as PDF';
+  saveCfoHistory(report);
+}
+
+function saveCfoHistory(report) {
+  const key = 'ihc_cfo_history';
+  const existing = JSON.parse(localStorage.getItem(key) || '[]');
+  existing.unshift({ date: new Date().toLocaleString(), type: cfoType, report });
+  localStorage.setItem(key, JSON.stringify(existing.slice(0,10)));
+  renderCfoHistory();
+}
+
+function renderCfoHistory() {
+  const entries = JSON.parse(localStorage.getItem('ihc_cfo_history') || '[]');
+  const el = document.getElementById('cfo-history-list');
+  if (!entries.length) { el.innerHTML = '<div style="color:#9a9182;font-size:12px">No past reports saved yet.</div>'; return; }
+  el.innerHTML = '';
+  entries.forEach(e => {
+    const div = document.createElement('div');
+    div.className = 'log-history-entry';
+    div.innerHTML = `<div class="log-history-date">${e.type==='monday'?'Monday':'Thursday'} Report — ${e.date}</div><details><summary style="cursor:pointer;font-size:12px;color:var(--teal)">View report</summary><div class="log-history-body">${e.report.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</div></details>`;
+    el.appendChild(div);
+  });
+}
+
+function clearCfoReport() {
+  if (!confirm('Clear this CFO report?')) return;
+  cfoPayments = []; cfoNotes = {};
+  ['cfo-ap-summary','cfo-escalation','cfo-flags','cfo-action-plan'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('cfo-status').textContent = '';
+  renderCfoPayments();
+  initCfoReport();
+  showToast('CFO report cleared');
+}
+
+// ── TABS ──────────────────────────────────────────────────────────────────────
 function switchTab(name) {
-  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
   document.querySelectorAll('.nav-tab').forEach(b => {
@@ -1215,6 +1519,7 @@ function switchTab(name) {
     if (name === 'dashboard' && (t === 'invoices' || t === 'dashboard')) b.classList.add('active');
     else if (name === 'agency' && t === 'byagency') b.classList.add('active');
     else if (name === 'log' && t === 'activitylog') b.classList.add('active');
+    else if (name === 'cfo' && t === 'cforeport') b.classList.add('active');
     else if (name === 'upload' && t === 'upload') b.classList.add('active');
     else if (name === 'ask-ai' && t === 'askai') b.classList.add('active');
     else if (name === 'history' && t === 'history') b.classList.add('active');
@@ -1222,6 +1527,7 @@ function switchTab(name) {
   if (name === 'dashboard') renderDashboard();
   if (name === 'agency') renderAgencyView();
   if (name === 'log') initLog();
+  if (name === 'cfo') initCfoReport();
   if (name === 'history') renderHistory();
   if (name === 'ask-ai') initChat();
 }
