@@ -245,7 +245,7 @@ tfoot td.num-col { text-align: right; }
 
     <div class="batch-bar">
       <span>AP Collections Workflow:</span>
-      <button class="btn-batch" id="btn-batch-all" onclick="batchDraftAll()">→ Draft All Overdue Emails to AP@ Drafts</button>
+      <button class="btn-batch" id="btn-batch-all" onclick="batchDraftAll()">→ Draft All Overdue Emails to Admin Drafts</button>
       <span class="batch-progress" id="batch-progress"></span>
     </div>
 
@@ -319,7 +319,7 @@ tfoot td.num-col { text-align: right; }
 
     <div class="batch-bar" style="margin-bottom:18px">
       <span>One email per agency — all open invoices consolidated:</span>
-      <button class="btn-batch" id="btn-batch-agency" onclick="batchDraftAll()">→ Draft All Overdue Emails to AP@ Drafts</button>
+      <button class="btn-batch" id="btn-batch-agency" onclick="batchDraftAll()">→ Draft All Overdue Emails to Admin Drafts</button>
       <span class="batch-progress" id="batch-progress-agency"></span>
     </div>
 
@@ -666,7 +666,7 @@ function initGmailStatus() {
     acc.textContent = gmailUser ? '· ' + gmailUser : '';
   } else {
     dot.classList.remove('connected');
-    txt.innerHTML = 'Gmail not connected — <a href="#" onclick="connectGmail();return false;" style="color:var(--teal);font-weight:700">Connect AP@ Gmail</a> to enable one-click drafts';
+    txt.innerHTML = 'Gmail not connected — <a href="#" onclick="connectGmail();return false;" style="color:var(--teal);font-weight:700">Connect Admin Gmail</a> to enable one-click drafts';
     acc.textContent = '';
   }
 }
@@ -707,7 +707,7 @@ async function fetchGmailUser() {
   } catch(e) {}
   initGmailStatus();
   renderDashboard();
-  showToast('Gmail connected ✓ · ' + (gmailUser || 'AP@'));
+  showToast('Gmail connected ✓ · ' + (gmailUser || 'Admin@'));
 }
 
 // ── AGENCY GROUPER ────────────────────────────────────────────────────────────
@@ -859,7 +859,7 @@ async function createGmailDraftForAgency(agencyName, invoices) {
   const { subject, body } = buildAgencyEmail(agencyName, invoices);
 
   const raw = [
-    `From: AP@independencehealthc.com`,
+    `From: Admin@IndependenceHealthC.com`,
     `To: `,
     `Subject: ${subject}`,
     `Content-Type: text/plain; charset=utf-8`,
@@ -925,7 +925,7 @@ async function batchDraftAll() {
   if (btn1) btn1.disabled = false;
   if (btn2) btn2.disabled = false;
   if (prog) prog.textContent = '';
-  showToast(`${done} agency draft${done !== 1 ? 's' : ''} created in AP@ Drafts ✓`);
+  showToast(`${done} agency draft${done !== 1 ? 's' : ''} created in Admin Drafts ✓`);
   renderAgencyView();
 }
 
@@ -1009,7 +1009,7 @@ function renderAgencyView() {
   document.getElementById('agency-meta').textContent = `${totalAgencies} agencies with open balances · ${overdueAgencies} with 30+ day invoices`;
 
   const batchBtn = document.getElementById('btn-batch-agency');
-  batchBtn.textContent = `→ Draft All ${overdueAgencies} Overdue Agency Emails to AP@ Drafts`;
+  batchBtn.textContent = `→ Draft All ${overdueAgencies} Overdue Agency Emails to Admin Drafts`;
 
   const tbody = document.getElementById('agency-tbody');
   tbody.innerHTML = '';
@@ -1244,7 +1244,7 @@ async function sendLogToJoe() {
   const report = buildLogReport();
   const today = new Date().toLocaleDateString('en-US', {month:'long',day:'numeric',year:'numeric'});
   const subject = `AR Collections Report — Christine — ${today}`;
-  const raw = [`From: AP@independencehealthc.com`, `To: ihc.cfo@gmail.com`, `Subject: ${subject}`, `Content-Type: text/plain; charset=utf-8`, ``, report].join('\r\n');
+  const raw = [`From: Admin@IndependenceHealthC.com`, `To: ihc.cfo@gmail.com`, `Subject: ${subject}`, `Content-Type: text/plain; charset=utf-8`, ``, report].join('\r\n');
   const encoded = btoa(unescape(encodeURIComponent(raw))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
   const btn = document.getElementById('btn-send-joe');
   btn.disabled = true; btn.textContent = '…';
@@ -1591,7 +1591,7 @@ function renderDashboard() {
   document.getElementById('result-count').textContent = 'Showing ' + rows.length + ' of ' + DATA.length + ' invoices';
 
   const batchBtn = document.getElementById('btn-batch-all');
-  batchBtn.textContent = `→ Draft All ${overdueCount} Overdue Emails to AP@ Drafts`;
+  batchBtn.textContent = `→ Draft All ${overdueCount} Overdue Emails to Admin Drafts`;
 
   ['date','num','name','due','amount','open'].forEach(k => {
     const el = document.getElementById('arrow-' + k);
