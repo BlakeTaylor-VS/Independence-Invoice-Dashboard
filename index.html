@@ -674,7 +674,7 @@ function initGmailStatus() {
 function connectGmail() {
   const params = new URLSearchParams({
     client_id: GMAIL_CLIENT_ID,
-    redirect_uri: window.location.href.split('?')[0].split('#')[0],
+    redirect_uri: 'https://independence-invoice-dashboard.onrender.com',
     response_type: 'token',
     scope: GMAIL_SCOPES,
     prompt: 'select_account'
