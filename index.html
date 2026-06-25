@@ -732,126 +732,144 @@ function buildAgencyEmail(agencyName, invoices) {
   const maxDays = agencyMaxDays(invoices);
   const totalFmt = fmt(totalOpen);
 
-  // Build invoice itemization
-  const lines = invoices.map(r =>
-    `  Invoice #${r.num} | Due: ${r.due} | Billed: ${fmt(r.amount)} | Open: ${fmt(r.open)} | ${daysOverdue(r.due)} days overdue`
-  ).join('\n');
+  const rows = invoices.map(r => `
+    <tr style="border-bottom:1px solid #e5e7eb;">
+      <td style="padding:6px 10px;">Invoice #${r.num}</td>
+      <td style="padding:6px 10px;">Due: ${r.due}</td>
+      <td style="padding:6px 10px;">Billed: ${fmt(r.amount)}</td>
+      <td style="padding:6px 10px;"><strong>Open: ${fmt(r.open)}</strong></td>
+      <td style="padding:6px 10px;color:#b91c1c;">${daysOverdue(r.due)} days overdue</td>
+    </tr>`).join('');
+
+  const invoiceTable = `
+    <table style="border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:13px;margin:10px 0;">
+      <thead>
+        <tr style="background:#f3f4f6;">
+          <th style="padding:7px 10px;text-align:left;">Invoice</th>
+          <th style="padding:7px 10px;text-align:left;">Due Date</th>
+          <th style="padding:7px 10px;text-align:left;">Billed</th>
+          <th style="padding:7px 10px;text-align:left;">Open Balance</th>
+          <th style="padding:7px 10px;text-align:left;">Status</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <p style="font-family:Arial,sans-serif;font-size:13px;"><strong>Total Outstanding: ${totalFmt}</strong></p>`;
+
+  const sig = `
+    <p style="font-family:Arial,sans-serif;font-size:13px;margin-top:24px;">
+      Sincerely,<br>
+      <strong>Christine</strong><br>
+      Accounts Payable | Independence Health Contractors<br>
+      AP@independencehealthc.com | (513) 532-9819
+    </p>`;
+
+  const base = `font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#111;max-width:680px;`;
 
   if (maxDays >= 60) {
     return {
-      subject: `SERVICE SUSPENSION NOTICE — ${agencyName} — ${totalFmt} Outstanding — ${maxDays}+ Days Overdue`,
-      body: `Dear ${agencyName} Billing / Leadership,
-
-As of ${today}, Independence Health Contractors is officially suspending acceptance of new patient referrals from ${agencyName} due to unresolved outstanding balances totaling ${totalFmt}.
-
-Outstanding invoices:
-${lines}
-
-Total outstanding: ${totalFmt}
-
-Effective immediately:
-— Independence clinicians will not accept new referrals from your agency
-— Patients currently under an active Plan of Care will continue to be seen through their current authorization period only
-— No new evaluations or Start of Care visits will be accepted
-
-This suspension remains in effect until all outstanding balances are paid in full, or a written payment agreement is signed and first payment received.
-
-To reinstate services, please contact us immediately:
-Christine — AP@independencehealthc.com | (513) 532-9819
-Joe, CFO — ihc.cfo@gmail.com
-
-Independence Health Contractors
-5021 Verdugo Way Ste 105 PMB 224, Camarillo, CA 93012`
+      subject: `SERVICE SUSPENSION NOTICE - ${agencyName} - ${totalFmt} Outstanding - ${maxDays}+ Days Overdue`,
+      body: `<div style="${base}">
+        <p>Dear ${agencyName} Billing / Leadership,</p>
+        <p>We want to begin by saying that Independence Health Contractors genuinely values our partnership with ${agencyName}. Our clinicians are committed to the patients you serve, and we take pride in the quality of care we provide on your behalf. It is precisely because we value this relationship that we are reaching out with the urgency this situation requires.</p>
+        <p>As of ${today}, we have outstanding invoices totaling <strong>${totalFmt}</strong> that remain unresolved. Despite repeated outreach, these balances have now exceeded 60 days past due, which leaves us with no choice but to take formal action to protect our organization.</p>
+        <p><strong style="color:#b91c1c;">Outstanding Invoices:</strong></p>
+        ${invoiceTable}
+        <p><strong style="color:#b91c1c;">As of ${today}, Independence Health Contractors is formally suspending acceptance of new patient referrals from ${agencyName} until this matter is fully resolved. This decision was not made lightly and reflects the seriousness of the outstanding balance.</strong></p>
+        <p><strong style="color:#b91c1c;">Effective Immediately:</strong></p>
+        <ul style="color:#b91c1c;font-weight:bold;">
+          <li>Independence clinicians will not accept new referrals from your agency</li>
+          <li>Patients currently under an active Plan of Care will continue to be seen through their current authorization period only</li>
+          <li>No new evaluations or Start of Care visits will be accepted</li>
+        </ul>
+        <p><strong>This suspension will remain in effect until one of the following conditions is met:</strong></p>
+        <ul>
+          <li><strong>All outstanding balances are paid in full, or</strong></li>
+          <li><strong>A written payment agreement is signed and the first scheduled payment is received</strong></li>
+        </ul>
+        <p><strong>We strongly encourage you to contact us immediately so we can work together toward a resolution. We want to reinstate services as quickly as possible and continue supporting your patients and your agency.</strong></p>
+        <p><strong>To resolve this and reinstate services, please contact us today:</strong></p>
+        <ul>
+          <li><strong>Christine (Accounts Payable):</strong> AP@independencehealthc.com | (513) 532-9819</li>
+          <li><strong>Joe (CFO):</strong> ihc.cfo@gmail.com</li>
+        </ul>
+        ${sig}
+        <p style="font-family:Arial,sans-serif;font-size:12px;color:#6b7280;">Independence Health Contractors | 5021 Verdugo Way Ste 105 PMB 224, Camarillo, CA 93012</p>
+      </div>`
     };
   }
 
   if (maxDays >= 50) {
     return {
-      subject: `FINAL NOTICE — ${agencyName} — ${totalFmt} Outstanding — Action Required`,
-      body: `Dear ${agencyName} Billing Team,
-
-This is a final written notice regarding outstanding balances totaling ${totalFmt} owed to Independence Health Contractors.
-
-Outstanding invoices:
-${lines}
-
-Total outstanding: ${totalFmt}
-
-We have made multiple documented attempts to collect these balances. If full payment or a signed written payment plan is not received within 10 business days of this notice (by ${deadline}), we will suspend acceptance of new patient referrals from ${agencyName}, effective immediately.
-
-Please contact us immediately to avoid service disruption:
-Christine — AP@independencehealthc.com | (513) 532-9819
-
-Christine [Last Name], on behalf of Joe [Last Name], CFO
-Accounts Payable | Independence Health Contractors`
+      subject: `FINAL NOTICE - ${agencyName} - ${totalFmt} Outstanding - Action Required by ${deadline}`,
+      body: `<div style="${base}">
+        <p>Dear ${agencyName} Billing Team,</p>
+        <p>We sincerely appreciate the working relationship we have built with ${agencyName} and the patients we serve together. Our goal has always been to be a reliable, long-term staffing partner for your agency, and we hope to continue in that capacity.</p>
+        <p>However, we must be transparent: the outstanding balance of <strong>${totalFmt}</strong> has now reached a critical stage. This is our final written notice before service action is taken.</p>
+        <p><strong style="color:#b91c1c;">Outstanding Invoices:</strong></p>
+        ${invoiceTable}
+        <p><strong style="color:#b91c1c;">If full payment or a signed written payment plan is not received by ${deadline}, Independence Health Contractors will suspend acceptance of all new patient referrals from ${agencyName}, effective immediately. This is not a threat - it is a necessary business decision to protect our clinicians and our organization.</strong></p>
+        <p><strong>We genuinely want to resolve this without disruption to your patients or our partnership. Please reach out today so we can find a path forward together.</strong></p>
+        <p><strong>Contact us immediately:</strong></p>
+        <ul>
+          <li><strong>Christine (Accounts Payable):</strong> AP@independencehealthc.com | (513) 532-9819</li>
+        </ul>
+        ${sig}
+      </div>`
     };
   }
 
   if (maxDays >= 40) {
     return {
-      subject: `URGENT — ${agencyName} — ${totalFmt} Outstanding — ${maxDays} Days Past Due`,
-      body: `Dear ${agencyName} Billing Team,
-
-Despite our previous notices, the following invoices remain unpaid with a combined outstanding balance of ${totalFmt}.
-
-Outstanding invoices:
-${lines}
-
-Total outstanding: ${totalFmt}
-
-We have made multiple attempts to reach your team. Please be aware that if this balance is not resolved within 10 business days, Independence Health Contractors will be required to evaluate our continued staffing relationship with your agency.
-
-Please contact us immediately:
-Christine — AP@independencehealthc.com | (513) 532-9819
-
-Christine [Last Name], reviewed by Joe [Last Name], CFO
-Accounts Payable | Independence Health Contractors`
+      subject: `URGENT - ${agencyName} - ${totalFmt} Outstanding - ${maxDays} Days Past Due`,
+      body: `<div style="${base}">
+        <p>Dear ${agencyName} Billing Team,</p>
+        <p>We value our partnership with ${agencyName} and the work our clinicians do for your patients every day. We are reaching out again with urgency because the outstanding balance below has now exceeded 40 days past due and requires your immediate attention.</p>
+        <p><strong style="color:#b91c1c;">Outstanding Invoices:</strong></p>
+        ${invoiceTable}
+        <p><strong style="color:#b91c1c;">We have made multiple documented attempts to reach your team regarding these invoices. If this balance is not resolved or a payment plan is not established within 10 business days, Independence Health Contractors will be required to escalate this matter, which may include suspending new patient referrals from your agency.</strong></p>
+        <p><strong>We do not want it to come to that. Please contact us as soon as possible so we can work through this together and keep our partnership intact.</strong></p>
+        <p><strong>Contact us today:</strong></p>
+        <ul>
+          <li><strong>Christine (Accounts Payable):</strong> AP@independencehealthc.com | (513) 532-9819</li>
+        </ul>
+        ${sig}
+      </div>`
     };
   }
 
   if (maxDays >= 30) {
     return {
-      subject: `Invoice Follow-Up — ${agencyName} — ${totalFmt} Outstanding`,
-      body: `Hi ${agencyName} Billing Team,
-
-I'm following up on the following outstanding invoices with a combined balance of ${totalFmt}.
-
-Outstanding invoices:
-${lines}
-
-Total outstanding: ${totalFmt}
-
-Please note that as invoices exceed 30 days past due, we are required to begin our collections escalation process, which can ultimately result in a pause on accepting new patient referrals. We want to avoid that outcome and resolve this quickly.
-
-Could you please confirm receipt and provide an expected payment date? If there are any billing discrepancies, please let us know right away.
-
-Thank you,
-Christine [Last Name]
-Accounts Payable | Independence Health Contractors
-AP@independencehealthc.com | (513) 532-9819`
+      subject: `Invoice Follow-Up - ${agencyName} - ${totalFmt} Outstanding`,
+      body: `<div style="${base}">
+        <p>Hi ${agencyName} Billing Team,</p>
+        <p>I hope you are doing well. We truly appreciate the opportunity to support ${agencyName} and the patients in your care - it is a partnership we take seriously and want to continue growing.</p>
+        <p>I am following up on the invoices below, which have a combined outstanding balance of <strong>${totalFmt}</strong> and are now past the 30-day mark. Per our agreement, we ask that these be addressed promptly to avoid triggering our escalation process.</p>
+        <p><strong style="color:#b91c1c;">Outstanding Invoices:</strong></p>
+        ${invoiceTable}
+        <p><strong style="color:#b91c1c;">Please be aware that balances exceeding 30 days past due initiate our collections escalation process, which can ultimately result in a temporary pause on new patient referrals. We want to avoid that outcome and keep things moving smoothly for both of our teams.</strong></p>
+        <p><strong>Could you please confirm receipt of these invoices and provide an expected payment date? If there are any discrepancies or questions, please do not hesitate to reach out - we are happy to work through any issues quickly.</strong></p>
+        <p>Thank you for your attention to this matter. We look forward to hearing from you.</p>
+        ${sig}
+      </div>`
     };
   }
 
-  // Under 30 days
   return {
-    subject: `Payment Reminder — ${agencyName} — ${totalFmt} Outstanding`,
-    body: `Hi ${agencyName} Billing Team,
-
-This is a friendly reminder regarding the following outstanding invoices totaling ${totalFmt}.
-
-Outstanding invoices:
-${lines}
-
-Total outstanding: ${totalFmt}
-
-Please let us know if you have any questions.
-
-Thank you,
-Christine [Last Name]
-Accounts Payable | Independence Health Contractors
-AP@independencehealthc.com | (513) 532-9819`
+    subject: `Payment Reminder - ${agencyName} - ${totalFmt} Outstanding`,
+    body: `<div style="${base}">
+      <p>Hi ${agencyName} Billing Team,</p>
+      <p>I hope all is well. We truly enjoy working with your team and appreciate the trust you place in Independence Health Contractors to support your patients.</p>
+      <p>This is a friendly reminder that the following invoices totaling <strong>${totalFmt}</strong> are currently outstanding. Please take a moment to review and let us know if you have any questions or need any documentation from our side.</p>
+      <p><strong style="color:#b91c1c;">Outstanding Invoices:</strong></p>
+      ${invoiceTable}
+      <p><strong>No urgent action is required at this time, but we want to make sure these are on your radar. Please do not hesitate to reach out if anything needs clarification.</strong></p>
+      <p>Thank you - we appreciate the partnership!</p>
+      ${sig}
+    </div>`
   };
 }
+
 
 // ── GMAIL DRAFT SENDER ────────────────────────────────────────────────────────
 async function createGmailDraftForAgency(agencyName, invoices) {
@@ -862,7 +880,8 @@ async function createGmailDraftForAgency(agencyName, invoices) {
     `From: Admin@IndependenceHealthC.com`,
     `To: `,
     `Subject: ${subject}`,
-    `Content-Type: text/plain; charset=utf-8`,
+    `MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8`,
     ``,
     body
   ].join('\r\n');
