@@ -734,11 +734,11 @@ function buildAgencyEmail(agencyName, invoices) {
 
   const rows = invoices.map(r => `
     <tr style="border-bottom:1px solid #e5e7eb;">
-      <td style="padding:6px 10px;">Invoice #${r.num}</td>
-      <td style="padding:6px 10px;">Due: ${r.due}</td>
-      <td style="padding:6px 10px;">Billed: ${fmt(r.amount)}</td>
-      <td style="padding:6px 10px;"><strong>Open: ${fmt(r.open)}</strong></td>
-      <td style="padding:6px 10px;color:#b91c1c;">${daysOverdue(r.due)} days overdue</td>
+      <td style="padding:6px 10px;color:#b91c1c;font-weight:bold;">Invoice #${r.num}</td>
+      <td style="padding:6px 10px;color:#b91c1c;font-weight:bold;">Due: ${r.due}</td>
+      <td style="padding:6px 10px;color:#b91c1c;font-weight:bold;">Billed: ${fmt(r.amount)}</td>
+      <td style="padding:6px 10px;color:#b91c1c;font-weight:bold;">Open: ${fmt(r.open)}</td>
+      <td style="padding:6px 10px;color:#b91c1c;font-weight:bold;">${daysOverdue(r.due)} days overdue</td>
     </tr>`).join('');
 
   const invoiceTable = `
@@ -754,7 +754,7 @@ function buildAgencyEmail(agencyName, invoices) {
       </thead>
       <tbody>${rows}</tbody>
     </table>
-    <p style="font-family:Arial,sans-serif;font-size:13px;"><strong>Total Outstanding: ${totalFmt}</strong></p>`;
+    <p style="font-family:Arial,sans-serif;font-size:13px;color:#b91c1c;font-weight:bold;">Total Outstanding: ${totalFmt}</p>`;
 
   const sig = `
     <p style="font-family:Arial,sans-serif;font-size:13px;margin-top:24px;">
@@ -804,7 +804,7 @@ function buildAgencyEmail(agencyName, invoices) {
       subject: `FINAL NOTICE - ${agencyName} - ${totalFmt} Outstanding - Action Required by ${deadline}`,
       body: `<div style="${base}">
         <p>Dear ${agencyName} Billing Team,</p>
-        <p>We sincerely appreciate the working relationship we have built with ${agencyName} and the patients we serve together. Our goal has always been to be a reliable, long-term staffing partner for your agency, and we hope to continue in that capacity.</p>
+        <p>We sincerely appreciate the working relationship we have built with ${agencyName} and the patients we serve together. Our goal has always been to be a reliable, long-term Contracting Partner for your agency, and we hope to continue growing that partnership.</p>
         <p>However, we must be transparent: the outstanding balance of <strong>${totalFmt}</strong> has now reached a critical stage. This is our final written notice before service action is taken.</p>
         <p><strong style="color:#b91c1c;">Outstanding Invoices:</strong></p>
         ${invoiceTable}
@@ -827,8 +827,8 @@ function buildAgencyEmail(agencyName, invoices) {
         <p>We value our partnership with ${agencyName} and the work our clinicians do for your patients every day. We are reaching out again with urgency because the outstanding balance below has now exceeded 40 days past due and requires your immediate attention.</p>
         <p><strong style="color:#b91c1c;">Outstanding Invoices:</strong></p>
         ${invoiceTable}
-        <p><strong style="color:#b91c1c;">We have made multiple documented attempts to reach your team regarding these invoices. If this balance is not resolved or a payment plan is not established within 10 business days, Independence Health Contractors will be required to escalate this matter, which may include suspending new patient referrals from your agency.</strong></p>
-        <p><strong>We do not want it to come to that. Please contact us as soon as possible so we can work through this together and keep our partnership intact.</strong></p>
+        <p><strong>We have made multiple documented attempts to reach your team regarding these invoices. Please understand that these unpaid invoices are nearing the deadline in which our Contracting Partnership will have to result in us pausing acceptance of visits for your agency within the next few days if the invoices are not paid in full.</strong></p>
+        <p><strong>We do not want it to come to that. Please contact us as soon as possible so we can work through this together and keep our Contracting Partnership intact.</strong></p>
         <p><strong>Contact us today:</strong></p>
         <ul>
           <li><strong>Christine (Accounts Payable):</strong> AP@independencehealthc.com | (513) 532-9819</li>
@@ -847,7 +847,7 @@ function buildAgencyEmail(agencyName, invoices) {
         <p>I am following up on the invoices below, which have a combined outstanding balance of <strong>${totalFmt}</strong> and are now past the 30-day mark. Per our agreement, we ask that these be addressed promptly to avoid triggering our escalation process.</p>
         <p><strong style="color:#b91c1c;">Outstanding Invoices:</strong></p>
         ${invoiceTable}
-        <p><strong style="color:#b91c1c;">Please be aware that balances exceeding 30 days past due initiate our collections escalation process, which can ultimately result in a temporary pause on new patient referrals. We want to avoid that outcome and keep things moving smoothly for both of our teams.</strong></p>
+        <p><strong>Please be aware that balances exceeding 30 days past due initiate our collections escalation process, which can ultimately result in a pause on accepting visits for your agency. We want to avoid that outcome and keep our Contracting Partnership moving smoothly for both of our teams.</strong></p>
         <p><strong>Could you please confirm receipt of these invoices and provide an expected payment date? If there are any discrepancies or questions, please do not hesitate to reach out - we are happy to work through any issues quickly.</strong></p>
         <p>Thank you for your attention to this matter. We look forward to hearing from you.</p>
         ${sig}
@@ -984,7 +984,7 @@ function buildSmsBody(agencyName, invoices) {
     return `${greeting} This is Christine from Independence Health. Final notice — $${totalOpen.toLocaleString()} outstanding:\n${invoiceLines}\n\nIf not resolved within 10 business days we will suspend new patient referrals. Please reach us at AP@independencehealthc.com or (513) 532-9819. — Independence Health`;
   }
   if (maxDays >= 40) {
-    return `${greeting} This is Christine from Independence Health. Urgent follow-up — $${totalOpen.toLocaleString()} outstanding:\n${invoiceLines}\n\nPlease respond within 10 business days or we will need to evaluate our continued relationship. AP@independencehealthc.com | (513) 532-9819 — Independence Health`;
+    return `${greeting} This is Christine from Independence Health. Urgent follow-up — $${totalOpen.toLocaleString()} outstanding:\n${invoiceLines}\n\nPlease respond within 10 business days or these unpaid invoices are nearing the deadline for our Contracting Partnership to pause accepting visits for your agency. AP@independencehealthc.com | (513) 532-9819 — Independence Health`;
   }
   if (maxDays >= 30) {
     return `${greeting} This is Christine from Independence Health. Following up on outstanding invoices totaling $${totalOpen.toLocaleString()}:\n${invoiceLines}\n\nPlease note: balances over 30 days may trigger a pause on new patient referrals. Please confirm receipt and ETA for payment. AP@independencehealthc.com | (513) 532-9819`;
