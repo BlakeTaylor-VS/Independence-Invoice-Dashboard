@@ -182,6 +182,7 @@ tfoot td.num-col { text-align: right; }
 .dispute-task-note:focus { outline:2px solid var(--teal); }
 .dispute-issue-sel, .dispute-status-sel { font-family:var(--sans); font-size:11.5px; padding:5px 6px; border:1.5px solid var(--line); border-radius:4px; color:var(--ink); background:var(--paper); width:100%; }
 .no-disputes-msg { font-family:var(--sans); font-size:13px; color:#9CA3AF; text-align:center; padding:32px; font-style:italic; }
+.dq-drag-over { border-color:var(--teal) !important; background:rgba(45,63,224,.05) !important; }
 
 </style>
 
@@ -481,15 +482,36 @@ tfoot td.num-col { text-align: right; }
     </div>
     <div class="dispute-paste-box">
       <h3>Import Dispute / Correction Items</h3>
-      <p>Paste anything from the agency &#8212; an email, a list of corrections, spreadsheet text, or free-form notes. Claude will parse it into structured tasks automatically.</p>
-      <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:10px">
+      <p>Paste text <em>or</em> upload a screenshot &#8212; email, spreadsheet, payroll report, anything. Claude Vision reads images directly and turns every row into a task.</p>
+      <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px">
         <div>
           <label class="field-label">Agency</label>
           <select class="dispute-agency-select" id="dq-agency-sel"><option value="">Select agency&#8230;</option></select>
         </div>
       </div>
-      <label class="field-label">Paste dispute text / email / corrections below</label>
-      <textarea class="dispute-paste-area" id="dq-paste-input" placeholder="Paste anything here &#10;&#10;e.g. Hi Christine, please correct the following before we can process payment:&#10;- Jane Doe 5/12 OT Eval - documentation incomplete, missing therapist signature&#10;- John Smith 5/14 PTA revisit - no EVV on file&#10;- Maria Lopez 5/18 OASIS DC - missing DC instructions and NMNOC&#10;&#10;Or paste a spreadsheet, a list of line items, or any notes from the agency."></textarea>
+
+      <!-- Image drop zone -->
+      <div id="dq-image-zone" onclick="document.getElementById('dq-image-input').click()"
+        ondragover="event.preventDefault();this.classList.add('dq-drag-over')"
+        ondragleave="this.classList.remove('dq-drag-over')"
+        ondrop="dqHandleImageDrop(event)"
+        style="border:2px dashed var(--line);border-radius:8px;padding:18px 24px;text-align:center;cursor:pointer;margin-bottom:10px;transition:all .2s;background:var(--paper2);position:relative;">
+        <input type="file" id="dq-image-input" accept="image/*" style="display:none" onchange="dqHandleImageFile(this)">
+        <div id="dq-image-preview-wrap" style="display:none;margin-bottom:10px;">
+          <img id="dq-image-preview" style="max-height:160px;max-width:100%;border-radius:6px;border:1px solid var(--line);box-shadow:0 2px 8px rgba(0,0,0,.08)">
+          <button onclick="event.stopPropagation();dqClearImage()" style="position:absolute;top:10px;right:10px;background:var(--rust);color:#fff;border:none;border-radius:50%;width:24px;height:24px;font-size:14px;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center;">&#215;</button>
+        </div>
+        <div id="dq-image-prompt" style="font-family:var(--sans);">
+          <div style="font-size:22px;margin-bottom:6px;">&#128444;</div>
+          <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:3px;">Drop screenshot here or click to upload</div>
+          <div style="font-size:11.5px;color:#9CA3AF;">Payroll report, email, spreadsheet screenshot &#8212; any image works</div>
+        </div>
+      </div>
+
+      <!-- Text paste (optional when image is loaded) -->
+      <label class="field-label" id="dq-text-label">Or paste text / email / corrections below</label>
+      <textarea class="dispute-paste-area" id="dq-paste-input" style="min-height:70px" placeholder="Paste anything here &#10;&#10;e.g. Hi Christine, please correct the following before we can process payment:&#10;- Jane Doe 5/12 OT Eval - documentation incomplete, missing therapist signature&#10;- John Smith 5/14 PTA revisit - no EVV on file&#10;- Maria Lopez 5/18 OASIS DC - missing DC instructions and NMNOC&#10;&#10;Or paste a spreadsheet, a list of line items, or any notes from the agency."></textarea>
+
       <div style="display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap">
         <button class="btn-parse" id="dq-parse-btn" onclick="parseDisputeText()">&#8594; Parse with AI</button>
         <span id="dq-parse-status" style="font-family:var(--sans);font-size:12px;color:var(--teal);font-weight:700"></span>
@@ -1306,34 +1328,113 @@ function initDisputeAgencySelect() {
   });
 }
 
+// ── DISPUTE IMAGE HANDLING ────────────────────────────────────────────────────
+let dqImageBase64 = null;
+let dqImageMediaType = null;
+
+function dqHandleImageDrop(e) {
+  e.preventDefault();
+  document.getElementById('dq-image-zone').classList.remove('dq-drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) dqLoadImage(file);
+}
+
+function dqHandleImageFile(input) {
+  const file = input.files[0];
+  if (file) dqLoadImage(file);
+}
+
+function dqLoadImage(file) {
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const dataUrl = ev.target.result;
+    // Compress via canvas before encoding — keeps payload manageable
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const MAX = 1200;
+      let w = img.width, h = img.height;
+      if (w > MAX || h > MAX) {
+        if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+        else { w = Math.round(w * MAX / h); h = MAX; }
+      }
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      const compressed = canvas.toDataURL('image/jpeg', 0.82);
+      const parts = compressed.split(',');
+      dqImageBase64 = parts[1];
+      dqImageMediaType = 'image/jpeg';
+      const kb = Math.round(dqImageBase64.length * 0.75 / 1024);
+      document.getElementById('dq-image-preview').src = compressed;
+      document.getElementById('dq-image-preview-wrap').style.display = 'block';
+      document.getElementById('dq-image-prompt').style.display = 'none';
+      document.getElementById('dq-text-label').textContent = 'Add any extra notes (optional \u2014 image is ready to parse)';
+      document.getElementById('dq-parse-status').textContent = '\u2713 Image ready (' + w + '\u00d7' + h + ', ~' + kb + 'KB) \u2014 hit Parse with AI';
+      document.getElementById('dq-parse-status').style.color = 'var(--paid)';
+    };
+    img.src = dataUrl;
+  };
+  reader.readAsDataURL(file);
+}
+
+function dqClearImage() {
+  dqImageBase64 = null;
+  dqImageMediaType = null;
+  document.getElementById('dq-image-preview-wrap').style.display = 'none';
+  document.getElementById('dq-image-prompt').style.display = 'block';
+  document.getElementById('dq-image-input').value = '';
+  document.getElementById('dq-text-label').textContent = 'Or paste text / email / corrections below';
+  document.getElementById('dq-parse-status').textContent = '';
+}
+
 async function parseDisputeText() {
   const agencySel = document.getElementById('dq-agency-sel');
   const agency = agencySel ? agencySel.value : '';
   const textEl = document.getElementById('dq-paste-input');
   const text = textEl ? textEl.value.trim() : '';
+  const hasImage = !!dqImageBase64;
+  const hasText = !!text;
+
   if (!agency) { showToast('Select an agency first', 'var(--gold)'); return; }
-  if (!text) { showToast('Paste some text to parse', 'var(--gold)'); return; }
+  if (!hasImage && !hasText) { showToast('Upload a screenshot or paste some text first', 'var(--gold)'); return; }
 
   const btn = document.getElementById('dq-parse-btn');
   const status = document.getElementById('dq-parse-status');
   btn.disabled = true;
   btn.textContent = 'Parsing\u2026';
-  status.textContent = 'Claude is reading the dispute text\u2026';
+  status.textContent = hasImage ? 'Claude Vision is reading the image\u2026' : 'Claude is reading the text\u2026';
+  status.style.color = 'var(--teal)';
 
   const systemPrompt = `You are a medical billing dispute parser for Independence Health Contractors, a home health therapy contracting company.
-The user will paste text from an agency \u2014 could be an email, a list of line-item corrections, spreadsheet content, or free-form notes.
-Extract every individual line item, correction request, or dispute.
+The user will provide an image (screenshot of a payroll report, email, or spreadsheet) and/or pasted text from an agency.
+Extract every individual line item, correction request, or dispute that needs to be resolved before payment can be made.
+Look for rows where payment is $0 or blank, where comments say things like "No Posted Visit", "No Consent Form", "No NOMNOC", "No EVV", "Pending", "Double entry", "Seen by other clinician", "Missed Visit", or any other reason a line is being disputed or withheld.
+Also extract any line that has a comment indicating a problem, discrepancy, or required correction.
+
 For each item return a JSON array of objects with these exact fields:
-- title: short description of the issue (max 80 chars, clear and actionable)
-- patient: patient name if mentioned, else empty string
-- visitDate: date of visit if mentioned (MM/DD/YYYY format if possible), else empty string
-- clinician: clinician name if mentioned, else empty string
-- visitType: type of visit if mentioned (e.g. OT Eval, PTA Revisit, OASIS DC, SOC, PT Eval, Recert, NMNOC), else empty string
-- amount: dollar amount disputed as a number if mentioned, else 0
+- title: short description of the issue (max 80 chars, clear and actionable — include the core problem)
+- patient: patient name if visible, else empty string
+- visitDate: date of visit if visible (MM/DD/YYYY format), else empty string
+- clinician: clinician name if visible, else empty string
+- visitType: type of visit if visible (e.g. OT Eval, PTA Visit, OASIS DC, SOC, PT Eval, Recert, PT Discharge), else empty string
+- amount: dollar amount on the line as a number if visible, else 0
 - issueType: best match from: Missing NMNOC / DC Instructions | Incomplete visit note / unsigned documentation | Missing EVV or paper signature | Missing Plan of Care / physician order | OASIS discrepancy | Billing code mismatch | Duplicate claim | Missing DC instructions | Clinician credential issue | Other / see notes
-- rawText: the exact original text snippet that produced this item
+- rawText: brief description of what you saw on this line
 
 Return ONLY a valid JSON array. No markdown fences, no explanation, no preamble. If nothing parseable found, return [].`;
+
+  // Build message content — image + optional text
+  const userContent = [];
+  if (hasImage) {
+    userContent.push({
+      type: 'image',
+      source: { type: 'base64', media_type: dqImageMediaType, data: dqImageBase64 }
+    });
+  }
+  userContent.push({
+    type: 'text',
+    text: hasText ? text : (hasImage ? 'Please extract all dispute/correction line items from this image.' : text)
+  });
 
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -1341,12 +1442,22 @@ Return ONLY a valid JSON array. No markdown fences, no explanation, no preamble.
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 1000,
+        max_tokens: 2000,
         system: systemPrompt,
-        messages: [{ role: 'user', content: text }]
+        messages: [{ role: 'user', content: userContent }]
       })
     });
     const d = await res.json();
+    // Surface API errors clearly
+    if (!res.ok || d.error) {
+      const errMsg = d.error?.message || d.error?.type || ('HTTP ' + res.status);
+      status.textContent = 'API error: ' + errMsg;
+      status.style.color = 'var(--rust)';
+      showToast('API error: ' + errMsg, 'var(--rust)');
+      console.error('Dispute parse API error:', d);
+      btn.disabled = false; btn.textContent = '\u2192 Parse with AI';
+      return;
+    }
     let raw = d.content?.find(b => b.type === 'text')?.text || '[]';
     raw = raw.trim().replace(/^```json\s*/,'').replace(/^```\s*/,'').replace(/\s*```$/,'');
     let parsed;
@@ -1356,7 +1467,8 @@ Return ONLY a valid JSON array. No markdown fences, no explanation, no preamble.
     }
 
     if (!Array.isArray(parsed) || !parsed.length) {
-      status.textContent = 'No items found \u2014 try pasting more specific text';
+      status.textContent = 'No items found \u2014 try a clearer image or add text notes';
+      status.style.color = 'var(--gold)';
       btn.disabled = false; btn.textContent = '\u2192 Parse with AI';
       return;
     }
@@ -1381,11 +1493,12 @@ Return ONLY a valid JSON array. No markdown fences, no explanation, no preamble.
 
     saveDisputes();
     if (textEl) textEl.value = '';
+    dqClearImage();
     status.textContent = `\u2713 ${parsed.length} item${parsed.length !== 1 ? 's' : ''} added for ${agency}`;
+    status.style.color = 'var(--paid)';
     renderDisputeQueue();
     showToast(`${parsed.length} dispute item${parsed.length !== 1 ? 's' : ''} added to ${agency} \u2713`);
 
-    // Auto-expand the newly added agency
     setTimeout(() => {
       const agencies = Object.keys(DISPUTES).filter(a => DISPUTES[a].length > 0).sort();
       const idx = agencies.indexOf(agency);
@@ -1397,6 +1510,7 @@ Return ONLY a valid JSON array. No markdown fences, no explanation, no preamble.
 
   } catch(err) {
     status.textContent = 'Parse failed \u2014 check connection and try again';
+    status.style.color = 'var(--rust)';
     showToast('Parse failed', 'var(--rust)');
     console.error(err);
   }
