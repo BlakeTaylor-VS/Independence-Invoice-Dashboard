@@ -1352,20 +1352,33 @@ function dqLoadImage(file) {
     const img = new Image();
     img.onload = () => {
       const canvas = document.createElement('canvas');
-      const MAX = 1200;
+      // High-res preview version
+      const PREV_MAX = 1200;
+      let pw = img.width, ph = img.height;
+      if (pw > PREV_MAX || ph > PREV_MAX) {
+        if (pw > ph) { ph = Math.round(ph * PREV_MAX / pw); pw = PREV_MAX; }
+        else { pw = Math.round(pw * PREV_MAX / ph); ph = PREV_MAX; }
+      }
+      const previewCanvas = document.createElement('canvas');
+      previewCanvas.width = pw; previewCanvas.height = ph;
+      previewCanvas.getContext('2d').drawImage(img, 0, 0, pw, ph);
+      const previewUrl = previewCanvas.toDataURL('image/jpeg', 0.80);
+
+      // Small API version — must stay under CORS preflight threshold (~50KB body)
+      const API_MAX = 640;
       let w = img.width, h = img.height;
-      if (w > MAX || h > MAX) {
-        if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
-        else { w = Math.round(w * MAX / h); h = MAX; }
+      if (w > API_MAX || h > API_MAX) {
+        if (w > h) { h = Math.round(h * API_MAX / w); w = API_MAX; }
+        else { w = Math.round(w * API_MAX / h); h = API_MAX; }
       }
       canvas.width = w; canvas.height = h;
       canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-      const compressed = canvas.toDataURL('image/jpeg', 0.82);
+      const compressed = canvas.toDataURL('image/jpeg', 0.60);
       const parts = compressed.split(',');
       dqImageBase64 = parts[1];
       dqImageMediaType = 'image/jpeg';
       const kb = Math.round(dqImageBase64.length * 0.75 / 1024);
-      document.getElementById('dq-image-preview').src = compressed;
+      document.getElementById('dq-image-preview').src = previewUrl;  // show high-res preview
       document.getElementById('dq-image-preview-wrap').style.display = 'block';
       document.getElementById('dq-image-prompt').style.display = 'none';
       document.getElementById('dq-text-label').textContent = 'Add any extra notes (optional \u2014 image is ready to parse)';
