@@ -1437,17 +1437,22 @@ Return ONLY a valid JSON array. No markdown fences, no explanation, no preamble.
   });
 
   try {
+    // Log payload size for debugging
+    const payloadStr = JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 2000,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userContent }]
+    });
+    console.log('Dispute parse payload size:', Math.round(payloadStr.length/1024) + 'KB', 'hasImage:', hasImage);
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 2000,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userContent }]
-      })
+      body: payloadStr
     });
+    console.log('Response status:', res.status, res.statusText);
     const d = await res.json();
+    console.log('Response body:', JSON.stringify(d).slice(0, 300));
     // Surface API errors clearly
     if (!res.ok || d.error) {
       const errMsg = d.error?.message || d.error?.type || ('HTTP ' + res.status);
@@ -1509,10 +1514,11 @@ Return ONLY a valid JSON array. No markdown fences, no explanation, no preamble.
     }, 150);
 
   } catch(err) {
-    status.textContent = 'Parse failed \u2014 check connection and try again';
+    const msg = err.message || String(err);
+    status.textContent = 'Error: ' + msg;
     status.style.color = 'var(--rust)';
-    showToast('Parse failed', 'var(--rust)');
-    console.error(err);
+    showToast('Error: ' + msg.slice(0,60), 'var(--rust)');
+    console.error('Dispute parse error:', err);
   }
 
   btn.disabled = false;
