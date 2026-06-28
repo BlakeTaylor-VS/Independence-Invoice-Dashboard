@@ -1265,7 +1265,6 @@ function syncData() { showToast('Data synced ✓'); }
 initDropdowns();
 renderDashboard();
 initGmailStatus();
-initDisputeAgencySelect();
 
 
 // ── DISPUTE QUEUE ─────────────────────────────────────────────────────────────
@@ -1294,7 +1293,9 @@ function initDisputeAgencySelect() {
   if (!sel) return;
   const current = sel.value;
   sel.innerHTML = '<option value="">Select agency\u2026</option>';
-  const fromData = [...new Set(DATA.map(r => r.name))].sort();
+  // Use DATA if populated, otherwise fall back to SEED so the list is never empty
+  const source = (DATA && DATA.length > 0) ? DATA : SEED;
+  const fromData = [...new Set(source.map(r => r.name))].sort();
   const fromDisputes = Object.keys(DISPUTES);
   const all = [...new Set([...fromData, ...fromDisputes])].sort();
   all.forEach(name => {
@@ -1576,6 +1577,7 @@ function downloadDisputeSheet(agencyName) {
 }
 
 function initDisputeTab() {
+  // Panel is now visible (switchTab made it active before calling this)
   initDisputeAgencySelect();
   renderDisputeQueue();
 }
