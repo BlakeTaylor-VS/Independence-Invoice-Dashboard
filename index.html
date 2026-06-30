@@ -1,87 +1,1720 @@
-# Late Fee Breakdown Patch — Independence Invoice Dashboard
-
-## What this fixes
-Tiers 3 (30-day), 4 (45-day), and 5 (60-day) currently show a generic paragraph
-explaining the late fee POLICY, but never compute the actual dollar amount per
-invoice. This patch adds a real per-invoice calculation and a breakdown column
-in the invoice table for any invoice 30+ days overdue.
-
-## Fee logic (as confirmed)
-- Day 31: one-time 3% applied to the open balance.
-- Every 7 days after that (day 38, 45, 52...): add $50 to the running balance,
-  THEN apply 3% on top of that new balance (compounding, not flat).
-- Before day 31: no fees, balance = open amount.
-
-## Step 1 — Add this function in index.html
-Paste this anywhere above `buildAgencyEmail` (e.g., right above the
-`function buildAgencyEmail` line):
-
-```javascript
-function calcLateFee(openAmount, days) {
-  if (days < 31) return { fees: 0, total: openAmount, cycles: 0 };
-  let balance = openAmount * 1.03; // immediate 3% at day 31
-  const cycles = Math.floor((days - 31) / 7); // number of $50+3% weekly cycles since day 31
-  for (let i = 0; i < cycles; i++) {
-    balance = (balance + 50) * 1.03;
-  }
-  return { fees: balance - openAmount, total: balance, cycles };
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Independence Health · Invoice Ledger</title>
+<style>
+:root {
+  --ink: #1A1A2E;
+  --paper: #FFFFFF;
+  --paper2: #F0F2F8;
+  --teal: #2D3FE0;
+  --teal-deep: #1E2DB0;
+  --rust: #D94F2C;
+  --gold: #E8A020;
+  --line: #D0D5E8;
+  --paid: #2A7A4B;
+  --sans: 'Helvetica Neue', Arial, sans-serif;
+  --serif: 'Helvetica Neue', Arial, sans-serif;
 }
-```
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; background: var(--paper2); color: var(--ink); font-family: var(--sans); -webkit-font-smoothing: antialiased; }
+nav { background: var(--teal); height: 56px; display: flex; align-items: center; padding: 0 28px; gap: 0; position: sticky; top: 0; z-index: 100; border-bottom: 3px solid var(--teal-deep); }
+.nav-brand { font-family: var(--sans); font-size: 14px; letter-spacing: .18em; text-transform: uppercase; font-weight: 800; color: #FFFFFF; margin-right: 32px; white-space: nowrap; }
+.nav-tab { background: none; border: none; border-bottom: 3px solid transparent; color: rgba(255,255,255,.6); font-family: var(--sans); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; font-weight: 700; cursor: pointer; padding: 0 16px; height: 56px; margin-bottom: -3px; transition: all .15s; }
+.nav-tab:hover { color: rgba(255,255,255,.9); }
+.nav-tab.active { color: var(--gold); border-bottom-color: var(--gold); }
+.nav-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.btn-sync { font-family: var(--sans); font-size: 11px; font-weight: 700; letter-spacing: .05em; padding: 6px 14px; background: rgba(255,255,255,.2); color: #FFFFFF; border: 1.5px solid rgba(255,255,255,.5); border-radius: 4px; cursor: pointer; }
+.btn-sync:hover { background: rgba(255,255,255,.3); }
+.wrap { max-width: 1200px; margin: 0 auto; padding: 28px 24px 64px; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+.summary-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; background: transparent; border: none; margin-bottom: 22px; }
+.sum-cell { background: var(--paper); padding: 16px 20px; border-radius: 8px; border: 1px solid var(--line); box-shadow: 0 1px 4px rgba(45,63,224,.07); }
+.sum-label { font-family: var(--sans); font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; color: #6B7280; margin-bottom: 6px; }
+.sum-val { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink); }
+.sum-val.rust { color: var(--rust); }
+.sum-val.paid-color { color: var(--paid); }
+.mini-bar-bg { height: 5px; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: 8px; }
+.mini-bar-fill { height: 100%; border-radius: 3px; }
+.controls { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 18px; padding: 16px 18px; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; font-family: var(--sans); }
+.field-label { font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: #6B7280; font-weight: 700; margin-bottom: 5px; display: block; }
+.ctrl-input, .ctrl-select { font-family: var(--sans); font-size: 13.5px; padding: 7px 10px; border: 1.5px solid var(--line); background: var(--paper); color: var(--ink); border-radius: 6px; outline: none; min-width: 160px; }
+.ctrl-input:focus, .ctrl-select:focus { outline: 2px solid var(--teal); outline-offset: 1px; border-color: var(--teal); }
+.pill-group { display: flex; gap: 6px; }
+.pill { border: 1.5px solid var(--line); background: var(--paper); color: var(--ink); font-family: var(--sans); font-size: 12px; font-weight: 700; cursor: pointer; border-radius: 999px; padding: 6px 14px; letter-spacing: .04em; transition: all .15s; }
+.pill.active, .pill:hover { background: var(--teal); color: #FFFFFF; border-color: var(--teal); }
+.btn-reset { border: none; background: none; font-family: var(--sans); font-size: 12px; color: var(--rust); cursor: pointer; text-decoration: underline; margin-left: auto; align-self: center; }
+.result-count { font-family: var(--sans); font-size: 12px; color: #6B7280; margin: 0 0 10px 2px; }
+.table-wrap { border: 1px solid var(--line); overflow-x: auto; background: var(--paper); border-radius: 8px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 900px; }
+thead th { font-family: var(--sans); font-size: 10.5px; letter-spacing: .13em; text-transform: uppercase; padding: 12px 14px; background: var(--teal); color: #FFFFFF; cursor: pointer; user-select: none; white-space: nowrap; text-align: left; border-right: 1px solid rgba(255,255,255,.12); }
+thead th.num-h { text-align: right; }
+thead th.active-sort { color: var(--gold); }
+thead th:hover { background: var(--teal-deep); }
+tbody td { padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 13.5px; vertical-align: middle; }
+tbody td.num-col { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+tbody tr:nth-child(even) { background: #F7F8FD; }
+tbody tr:hover { background: #EEF0FB; }
+tbody tr.no-results td { text-align: center; padding: 48px; color: #9CA3AF; font-style: italic; }
+.name-col { font-weight: 600; }
+tfoot td { padding: 10px 14px; font-weight: 700; border-top: 2px solid var(--teal); background: #EEF0FB; font-variant-numeric: tabular-nums; }
+tfoot td.num-col { text-align: right; }
+.badge { font-size: 10px; letter-spacing: .09em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; font-weight: 700; font-family: var(--sans); display: inline-block; }
+.badge.open { background: rgba(217,79,44,.12); color: var(--rust); }
+.badge.partial { background: rgba(232,160,32,.18); color: #9A6010; }
+.badge.paid { background: rgba(42,122,75,.15); color: var(--paid); }
+.days-badge { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; font-weight: 700; font-family: var(--sans); display: inline-block; white-space: nowrap; }
+.days-60 { background: rgba(217,79,44,.18); color: #9A1010; }
+.days-50 { background: rgba(217,79,44,.12); color: var(--rust); }
+.days-40 { background: rgba(232,160,32,.2); color: #9A6010; }
+.days-30 { background: rgba(45,63,224,.12); color: var(--teal); }
+.days-current { background: rgba(42,122,75,.12); color: var(--paid); }
+.btn-draft { font-family: var(--sans); font-size: 11px; font-weight: 700; letter-spacing: .04em; padding: 5px 11px; background: var(--teal); color: #FFFFFF; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap; transition: background .15s; }
+.btn-draft:hover { background: var(--teal-deep); }
+.btn-draft:disabled { background: var(--line); color: #9CA3AF; cursor: default; }
+.btn-draft.sending { background: var(--gold); color: var(--ink); }
+.btn-draft.sent { background: var(--paid); color: #FFFFFF; }
+.batch-bar { display: flex; align-items: center; gap: 14px; padding: 12px 18px; background: var(--ink); color: #FFFFFF; font-family: var(--sans); font-size: 13px; margin-bottom: 0; border-radius: 8px 8px 0 0; }
+.batch-bar strong { color: var(--gold); }
+.btn-batch { font-family: var(--sans); font-size: 12px; font-weight: 700; letter-spacing: .05em; padding: 7px 18px; background: var(--gold); color: var(--ink); border: none; border-radius: 4px; cursor: pointer; transition: opacity .15s; }
+.btn-batch:hover { opacity: .85; }
+.btn-batch:disabled { opacity: .4; cursor: default; }
+.batch-progress { font-size: 12px; color: rgba(255,255,255,.6); margin-left: 4px; }
+.gmail-banner { display: flex; align-items: center; gap: 10px; padding: 9px 18px; font-family: var(--sans); font-size: 12px; border-bottom: 1px solid var(--line); background: var(--paper); border-radius: 8px; margin-bottom: 4px; }
+.gmail-dot { width: 8px; height: 8px; border-radius: 50%; background: #ccc; flex-shrink: 0; }
+.gmail-dot.connected { background: var(--paid); }
+.gmail-dot.error { background: var(--rust); }
+.upload-wrap { max-width: 700px; }
+.dropzone { border: 2px dashed var(--line); background: var(--paper2); border-radius: 8px; padding: 40px 24px; text-align: center; cursor: pointer; transition: all .2s; }
+.dropzone.drag-over { border-color: var(--teal); background: rgba(45,63,224,.05); }
+.dropzone-icon { font-size: 32px; margin-bottom: 12px; }
+.dropzone-title { font-family: var(--sans); font-weight: 700; margin-bottom: 6px; }
+.dropzone-hint { font-family: var(--sans); font-size: 12px; color: #9CA3AF; }
+.upload-preview { margin-top: 24px; }
+.preview-ok { font-family: var(--sans); font-size: 13px; color: var(--teal); font-weight: 700; margin-bottom: 12px; }
+.btn-primary { font-family: var(--sans); font-size: 13px; font-weight: 700; letter-spacing: .05em; padding: 10px 22px; background: var(--teal); color: #FFFFFF; border: none; border-radius: 6px; cursor: pointer; }
+.btn-primary:hover { background: var(--teal-deep); }
+.btn-default { font-family: var(--sans); font-size: 13px; font-weight: 700; letter-spacing: .05em; padding: 10px 22px; background: var(--paper); color: var(--ink); border: 1.5px solid var(--line); border-radius: 6px; cursor: pointer; }
+.btn-default:hover { background: var(--paper2); }
+.btn-danger { font-family: var(--sans); font-size: 13px; font-weight: 700; letter-spacing: .05em; padding: 10px 22px; background: var(--rust); color: #FFFFFF; border: none; border-radius: 6px; cursor: pointer; }
+.btn-row { display: flex; gap: 10px; margin-top: 16px; }
+.ai-wrap h2, .upload-wrap h2, .history-wrap h2 { font-weight: 700; font-size: 24px; margin: 0 0 6px; color: var(--ink); }
+.ai-wrap p, .upload-wrap p, .history-wrap p { font-family: var(--sans); font-size: 13.5px; color: #6B7280; margin: 0 0 20px; }
+.suggestions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+.suggestion-pill { border: 1.5px solid var(--line); background: var(--paper); color: var(--ink); font-family: var(--sans); font-size: 12px; font-weight: 600; cursor: pointer; border-radius: 999px; padding: 6px 14px; letter-spacing: .04em; transition: all .15s; }
+.suggestion-pill:hover { background: var(--paper2); border-color: var(--teal); }
+.chat-outer { display: flex; flex-direction: column; height: calc(100vh - 240px); max-height: 600px; }
+.chat-messages { flex: 1; overflow-y: auto; padding: 20px 0; display: flex; flex-direction: column; gap: 14px; }
+.msg { font-family: var(--sans); font-size: 14px; line-height: 1.65; white-space: pre-wrap; }
+.msg.user { align-self: flex-end; background: var(--teal); color: #FFFFFF; border-radius: 12px 12px 2px 12px; padding: 10px 16px; max-width: 72%; }
+.msg.ai { align-self: flex-start; background: var(--paper2); border: 1px solid var(--line); border-radius: 12px 12px 12px 2px; padding: 12px 16px; max-width: 82%; }
+.msg.thinking { align-self: flex-start; background: transparent; color: #9CA3AF; font-style: italic; font-size: 13px; padding: 4px 0; }
+.chat-input-row { display: flex; gap: 10px; padding: 14px 0 0; border-top: 1px solid var(--line); }
+.chat-input-row .ctrl-input { flex: 1; min-width: 0; }
+.history-wrap { max-width: 700px; }
+.history-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 12px; background: transparent; border: none; margin-bottom: 28px; }
+.upload-row-item { display: flex; gap: 10px; align-items: center; padding: 10px 14px; background: var(--paper); border: 1px solid var(--line); border-radius: 6px; margin-bottom: 8px; }
+.upload-row-name { font-weight: 700; font-size: 13.5px; }
+.upload-row-meta { font-family: var(--sans); font-size: 11.5px; color: #9CA3AF; margin-top: 2px; }
+.history-section-label { font-family: var(--sans); font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: #6B7280; font-weight: 700; margin-bottom: 12px; }
+.danger-zone { margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--line); }
+.danger-note { font-family: var(--sans); font-size: 12px; color: #9CA3AF; margin-bottom: 12px; }
+.dash-header { margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 8px; }
+.dash-eyebrow { font-family: var(--sans); font-size: 11px; letter-spacing: .3em; text-transform: uppercase; color: var(--teal); margin-bottom: 4px; font-weight: 800; }
+.dash-title { margin: 0; font-size: clamp(24px,4vw,38px); font-weight: 700; letter-spacing: -.01em; color: var(--ink); }
+.dash-meta { font-family: var(--sans); font-size: 12px; color: #6B7280; text-align: right; }
+#toast { position: fixed; bottom: 24px; right: 24px; background: var(--teal); color: #FFFFFF; padding: 12px 20px; border-radius: 8px; font-family: var(--sans); font-size: 13px; font-weight: 700; z-index: 999; box-shadow: 0 4px 16px rgba(45,63,224,.3); display: none; }
+.agency-row { cursor: pointer; }
+.agency-row:hover { background: #EEF0FB !important; }
+.agency-row td { font-weight: 600; }
+.expand-icon { display: inline-block; font-size: 11px; transition: transform .2s; font-family: var(--sans); color: #9CA3AF; }
+.expand-icon.open { transform: rotate(90deg); }
+.sub-row { display: none; background: #F7F8FD; }
+.sub-row.visible { display: table-row; }
+.sub-row td { font-weight: 400; font-size: 12.5px; padding: 7px 14px; border-bottom: 1px solid var(--line); color: #4B5563; }
+.sub-row td:first-child { padding-left: 36px; }
+.log-session-bar { display:flex; align-items:center; gap:14px; flex-wrap:wrap; padding:12px 18px; background:var(--paper); border:1px solid var(--line); margin-bottom:18px; font-family:var(--sans); border-radius:8px; }
+.log-section-label { font-family:var(--sans); font-size:10px; letter-spacing:.2em; text-transform:uppercase; color:var(--teal); font-weight:800; margin-bottom:8px; margin-top:4px; }
+.log-check { width:18px; height:18px; cursor:pointer; accent-color:var(--teal); }
+.log-note { font-family:var(--sans); font-size:12px; padding:5px 8px; border:1.5px solid var(--line); background:var(--paper); color:var(--ink); border-radius:4px; width:100%; }
+.log-note:focus { outline:2px solid var(--teal); outline-offset:1px; }
+.payment-tag { display:inline-flex; align-items:center; gap:8px; background:rgba(42,122,75,.1); border:1px solid rgba(42,122,75,.3); border-radius:999px; padding:4px 12px; font-family:var(--sans); font-size:12px; color:var(--paid); font-weight:700; margin:0 6px 6px 0; }
+.payment-tag button { background:none; border:none; cursor:pointer; color:var(--paid); font-size:14px; line-height:1; padding:0; }
+.log-history-entry { padding:10px 14px; border:1px solid var(--line); border-radius:6px; margin-bottom:8px; background:var(--paper); }
+.log-history-date { font-weight:700; font-size:12px; color:var(--ink); margin-bottom:4px; font-family:var(--sans); }
+.log-history-body { font-size:11.5px; color:#6B7280; white-space:pre-wrap; line-height:1.6; font-family:var(--sans); }
 
-## Step 2 — Replace the `rows` and `invoiceTable` block in `buildAgencyEmail`
+/* DISPUTE QUEUE */
+.dispute-summary-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:20px; }
+.dispute-paste-box { background:var(--paper); border:1px solid var(--line); border-radius:8px; padding:18px; margin-bottom:18px; }
+.dispute-paste-box h3 { font-size:13px; letter-spacing:.1em; text-transform:uppercase; color:var(--teal); font-weight:800; margin:0 0 8px; font-family:var(--sans); }
+.dispute-paste-box p { font-family:var(--sans); font-size:12.5px; color:#6B7280; margin:0 0 12px; }
+.dispute-paste-area { width:100%; min-height:110px; font-family:var(--sans); font-size:13px; padding:10px; border:1.5px solid var(--line); border-radius:6px; resize:vertical; color:var(--ink); background:var(--paper2); box-sizing:border-box; }
+.dispute-paste-area:focus { outline:2px solid var(--teal); border-color:var(--teal); }
+.dispute-agency-select { font-family:var(--sans); font-size:13.5px; padding:7px 10px; border:1.5px solid var(--line); border-radius:6px; min-width:220px; color:var(--ink); background:var(--paper); }
+.btn-parse { font-family:var(--sans); font-size:12px; font-weight:700; padding:8px 20px; background:var(--teal); color:#fff; border:none; border-radius:6px; cursor:pointer; letter-spacing:.05em; }
+.btn-parse:hover { background:var(--teal-deep); }
+.btn-parse:disabled { background:var(--line); color:#9CA3AF; cursor:default; }
+.dispute-agency-block { background:var(--paper); border:1px solid var(--line); border-radius:8px; margin-bottom:12px; overflow:hidden; }
+.dispute-agency-header { display:flex; align-items:center; gap:12px; padding:13px 18px; cursor:pointer; user-select:none; border-bottom:1px solid transparent; transition:background .15s; }
+.dispute-agency-header:hover { background:var(--paper2); }
+.dispute-agency-header.dq-open { border-bottom-color:var(--line); background:var(--paper2); }
+.dispute-agency-name { font-weight:700; font-size:14px; font-family:var(--sans); flex:1; }
+.dq-badge { font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; padding:3px 9px; border-radius:999px; font-family:var(--sans); white-space:nowrap; }
+.dq-badge.open-count { background:rgba(217,79,44,.12); color:var(--rust); }
+.dq-badge.done-count { background:rgba(42,122,75,.12); color:var(--paid); }
+.dq-badge.amt-disputed { background:rgba(232,160,32,.18); color:#9A6010; }
+.btn-download-disputes { font-family:var(--sans); font-size:11px; font-weight:700; padding:5px 12px; background:var(--ink); color:#fff; border:none; border-radius:4px; cursor:pointer; white-space:nowrap; }
+.btn-download-disputes:hover { background:#2d2d3e; }
+.dispute-tasks-wrap { padding:0 18px 16px; display:none; }
+.dispute-tasks-wrap.visible { display:block; }
+.dispute-task-card { display:grid; grid-template-columns:22px 1fr 160px 140px 90px; gap:10px; align-items:start; padding:10px 12px; border:1px solid var(--line); border-radius:6px; margin-top:8px; background:var(--paper2); font-family:var(--sans); font-size:12.5px; transition:background .15s,opacity .15s; }
+.dispute-task-card.status-resolved { opacity:.5; background:#f0faf4; border-color:#b2dfc6; }
+.dispute-task-card.status-in-progress { border-color:var(--gold); background:#fffbf0; }
+.dispute-task-num { font-size:10px; font-weight:700; color:#9CA3AF; padding-top:3px; }
+.dispute-task-body { display:flex; flex-direction:column; gap:3px; }
+.dispute-task-title { font-weight:700; font-size:13px; color:var(--ink); line-height:1.3; }
+.dispute-task-meta { font-size:11.5px; color:#6B7280; }
+.dispute-task-note { font-family:var(--sans); font-size:12px; padding:5px 7px; border:1.5px solid var(--line); border-radius:4px; width:100%; color:var(--ink); background:var(--paper); box-sizing:border-box; }
+.dispute-task-note:focus { outline:2px solid var(--teal); }
+.dispute-issue-sel, .dispute-status-sel { font-family:var(--sans); font-size:11.5px; padding:5px 6px; border:1.5px solid var(--line); border-radius:4px; color:var(--ink); background:var(--paper); width:100%; }
+.no-disputes-msg { font-family:var(--sans); font-size:13px; color:#9CA3AF; text-align:center; padding:32px; font-style:italic; }
+.dq-drag-over { border-color:var(--teal) !important; background:rgba(45,63,224,.05) !important; }
 
-Find this existing block (around line 631-642):
+</style>
 
-```javascript
+</head>
+<body>
+
+<nav>
+  <span class="nav-brand">Independence Health · Invoices</span>
+  <button class="nav-tab active" onclick="switchTab('dashboard')">Invoices</button>
+  <button class="nav-tab" onclick="switchTab('agency')">By Agency</button>
+  <button class="nav-tab" onclick="switchTab('log')">Activity Log</button>
+  <button class="nav-tab" onclick="switchTab('cfo')">CFO Report</button>
+  <button class="nav-tab" onclick="switchTab('upload')">Upload</button>
+  <button class="nav-tab" onclick="switchTab('ask-ai')">Ask AI</button>
+  <button class="nav-tab" onclick="switchTab('history')">History</button>
+  <button class="nav-tab" onclick="switchTab('disputes')">Disputes</button>
+  <div class="nav-right">
+    <button class="btn-sync" onclick="syncData()">Sync</button>
+  </div>
+</nav>
+
+<div class="wrap">
+
+  <!-- DASHBOARD TAB -->
+  <div class="tab-panel active" id="tab-dashboard">
+    <div class="dash-header">
+      <div>
+        <div class="dash-eyebrow">Independence Health Contractors</div>
+        <h1 class="dash-title">Invoice Ledger</h1>
+      </div>
+      <div class="dash-meta" id="dash-meta"></div>
+    </div>
+    <div class="summary-grid">
+      <div class="sum-cell"><div class="sum-label">Invoices shown</div><div class="sum-val" id="sum-count">—</div></div>
+      <div class="sum-cell"><div class="sum-label">Total billed</div><div class="sum-val" id="sum-billed">—</div><div class="mini-bar-bg"><div class="mini-bar-fill" id="bar-billed" style="background:var(--teal)"></div></div></div>
+      <div class="sum-cell"><div class="sum-label">Open balance</div><div class="sum-val rust" id="sum-open">—</div><div class="mini-bar-bg"><div class="mini-bar-fill" id="bar-open" style="background:var(--rust)"></div></div></div>
+      <div class="sum-cell"><div class="sum-label">Paid in full</div><div class="sum-val paid-color" id="sum-paid">—</div></div>
+    </div>
+    <div class="gmail-banner">
+      <div class="gmail-dot" id="gmail-dot"></div>
+      <span id="gmail-status-text" style="font-weight:600">Checking Gmail connection…</span>
+      <span style="color:#9a9182;margin-left:4px" id="gmail-account-text"></span>
+    </div>
+    <div class="batch-bar">
+      <span>AP Collections Workflow:</span>
+      <button class="btn-batch" id="btn-batch-all" onclick="batchDraftAll()">→ Draft All Overdue Emails to AP@ Drafts</button>
+      <span class="batch-progress" id="batch-progress"></span>
+    </div>
+    <div class="controls">
+      <div><label class="field-label">Search</label><input class="ctrl-input" id="search-input" placeholder="Contractor or invoice #" style="min-width:200px" oninput="renderDashboard()"></div>
+      <div><label class="field-label">Contractor</label><select class="ctrl-select" id="contractor-sel" onchange="renderDashboard()"><option value="">All contractors</option></select></div>
+      <div><label class="field-label">Month</label><select class="ctrl-select" id="month-sel" onchange="renderDashboard()"><option value="">All months</option></select></div>
+      <div><label class="field-label">Status</label><div class="pill-group" id="status-pills"><button class="pill active" data-status="" onclick="setStatus(this)">All</button><button class="pill" data-status="open" onclick="setStatus(this)">Open</button><button class="pill" data-status="partial" onclick="setStatus(this)">Partial</button><button class="pill" data-status="paid" onclick="setStatus(this)">Paid</button></div></div>
+      <button class="btn-reset" onclick="resetFilters()">Reset</button>
+    </div>
+    <p class="result-count" id="result-count"></p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th onclick="sortBy('date')">Date <span id="arrow-date"></span></th>
+          <th onclick="sortBy('num')">Invoice # <span id="arrow-num"></span></th>
+          <th onclick="sortBy('name')">Contractor <span id="arrow-name"></span></th>
+          <th onclick="sortBy('due')">Due Date <span id="arrow-due"></span></th>
+          <th class="num-h" onclick="sortBy('amount')">Amount <span id="arrow-amount"></span></th>
+          <th class="num-h" onclick="sortBy('open')">Open Balance <span id="arrow-open"></span></th>
+          <th style="cursor:default">Status</th>
+          <th style="cursor:default">Days Overdue</th>
+        </tr></thead>
+        <tbody id="table-body"></tbody>
+        <tfoot><tr><td colspan="4">Totals (filtered)</td><td class="num-col" id="foot-amount">—</td><td class="num-col" id="foot-open">—</td><td colspan="2"></td></tr></tfoot>
+      </table>
+    </div>
+  </div>
+
+  <!-- AGENCY VIEW TAB -->
+  <div class="tab-panel" id="tab-agency">
+    <div class="dash-header">
+      <div><div class="dash-eyebrow">Independence Health Contractors</div><h1 class="dash-title">By Agency</h1></div>
+      <div class="dash-meta" id="agency-meta"></div>
+    </div>
+    <div class="batch-bar" style="margin-bottom:18px">
+      <span>One email per agency — all open invoices consolidated:</span>
+      <button class="btn-batch" id="btn-batch-agency" onclick="batchDraftAll()">→ Draft All Overdue Emails to AP@ Drafts</button>
+      <span class="batch-progress" id="batch-progress-agency"></span>
+    </div>
+    <div class="table-wrap">
+      <table id="agency-table" style="min-width:700px">
+        <thead><tr>
+          <th style="cursor:default;width:28px"></th>
+          <th style="cursor:default">Agency</th>
+          <th style="cursor:default;text-align:right">Open Invoices</th>
+          <th style="cursor:default;text-align:right">Total Open Balance</th>
+          <th style="cursor:default">Highest Tier</th>
+          <th style="cursor:default">Email Draft</th>
+          <th style="cursor:default">Text (iPhone)</th>
+          <th style="cursor:default">Copy Text</th>
+        </tr></thead>
+        <tbody id="agency-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- UPLOAD TAB -->
+  <div class="tab-panel" id="tab-upload">
+    <div class="upload-wrap">
+      <h2>Upload CSV</h2>
+      <p>Add a new invoice export. Duplicate invoice numbers are automatically skipped.</p>
+      <div class="dropzone" id="dropzone" onclick="document.getElementById('file-input').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="handleDrop(event)">
+        <input type="file" id="file-input" accept=".csv" style="display:none" onchange="handleFileInput(this)">
+        <div class="dropzone-icon">📄</div>
+        <div class="dropzone-title">Drop a CSV file here or click to browse</div>
+        <div class="dropzone-hint">Expects QuickBooks invoice export format (Date, Invoice #, Name, Amount, Open Balance)</div>
+      </div>
+      <div class="upload-preview" id="upload-preview" style="display:none">
+        <div class="preview-ok" id="preview-ok"></div>
+        <div class="table-wrap"><table><thead><tr><th style="cursor:default">Date</th><th style="cursor:default">#</th><th style="cursor:default">Contractor</th><th class="num-h" style="cursor:default">Amount</th><th class="num-h" style="cursor:default">Open</th></tr></thead><tbody id="preview-body"></tbody></table></div>
+        <div class="btn-row"><button class="btn-primary" onclick="confirmUpload()">Add to Dashboard</button><button class="btn-default" onclick="cancelUpload()">Cancel</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ASK AI TAB -->
+  <div class="tab-panel" id="tab-ask-ai">
+    <div class="ai-wrap">
+      <h2>Ask AI</h2>
+      <p>Ask any question about the invoice data in plain English.</p>
+      <div class="suggestions" id="suggestions">
+        <button class="suggestion-pill" onclick="setAiInput(this.textContent)">Which contractor has the highest open balance?</button>
+        <button class="suggestion-pill" onclick="setAiInput(this.textContent)">Show me all unpaid invoices from June</button>
+        <button class="suggestion-pill" onclick="setAiInput(this.textContent)">What's the total billed per month?</button>
+        <button class="suggestion-pill" onclick="setAiInput(this.textContent)">Which contractors are fully paid up?</button>
+      </div>
+      <div class="chat-outer">
+        <div class="chat-messages" id="chat-messages"></div>
+        <div class="chat-input-row">
+          <input class="ctrl-input" id="ai-input" placeholder="Ask a question about the invoices…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAI();}">
+          <button class="btn-primary" id="ai-send-btn" onclick="sendAI()">Ask</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HISTORY TAB -->
+  <div class="tab-panel" id="tab-history">
+    <div class="history-wrap">
+      <h2>Project Overview</h2>
+      <p>Upload history and project stats.</p>
+      <div class="history-grid summary-grid" id="history-stats">
+        <div class="sum-cell"><div class="sum-label">Total invoices</div><div class="sum-val" id="hist-count">—</div></div>
+        <div class="sum-cell"><div class="sum-label">Contractors</div><div class="sum-val" id="hist-contractors">—</div></div>
+        <div class="sum-cell"><div class="sum-label">Total billed</div><div class="sum-val" id="hist-billed" style="font-size:18px">—</div></div>
+        <div class="sum-cell"><div class="sum-label">Open balance</div><div class="sum-val rust" id="hist-open" style="font-size:18px">—</div></div>
+      </div>
+      <div class="history-section-label">Upload History</div>
+      <div id="upload-history-list"></div>
+      <div class="danger-zone">
+        <div class="danger-note">Reset project to seed data only. This cannot be undone.</div>
+        <button class="btn-danger" onclick="resetProject()">Reset Project</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ACTIVITY LOG TAB -->
+  <div class="tab-panel" id="tab-log">
+    <div class="dash-header">
+      <div><div class="dash-eyebrow">Independence Health Contractors</div><h1 class="dash-title">Collections Activity Log</h1></div>
+      <div class="dash-meta" id="log-meta"></div>
+    </div>
+    <div class="log-session-bar">
+      <div>
+        <span class="field-label" style="display:inline-block;margin-bottom:0;margin-right:10px">Session type:</span>
+        <div class="pill-group" style="display:inline-flex">
+          <button class="pill active" data-session="email" onclick="setSessionType(this)">Email Follow-Up (Mon/Wed/Fri)</button>
+          <button class="pill" data-session="text" onclick="setSessionType(this)">Text + Email (Friday)</button>
+        </div>
+      </div>
+      <div style="margin-left:auto;font-family:var(--sans);font-size:12px;color:#8a8174" id="log-date-display"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--ink);border:1px solid var(--ink);margin-bottom:18px">
+      <div style="background:var(--paper);padding:12px 18px"><div class="sum-label">Agencies emailed this session</div><div class="sum-val" id="log-emailed-count" style="font-size:22px">0</div></div>
+      <div style="background:var(--paper);padding:12px 18px"><div class="sum-label">Agencies texted this session</div><div class="sum-val" id="log-texted-count" style="font-size:22px">0</div></div>
+    </div>
+    <div class="log-section-label">Mark actions completed this session</div>
+    <div class="table-wrap" style="margin-bottom:18px">
+      <table style="min-width:600px">
+        <thead><tr>
+          <th style="cursor:default;width:40px">Email</th>
+          <th id="th-text-col" style="cursor:default;width:40px">Text</th>
+          <th style="cursor:default">Agency</th>
+          <th style="cursor:default">Contact</th>
+          <th style="cursor:default;text-align:right">Open Balance</th>
+          <th style="cursor:default">Tier</th>
+          <th style="cursor:default">Response / Note</th>
+        </tr></thead>
+        <tbody id="log-tbody"></tbody>
+      </table>
+    </div>
+    <div class="log-section-label">Payments received since last session</div>
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:18px;flex-wrap:wrap">
+      <input class="ctrl-input" id="log-payment-agency" placeholder="Agency name" style="min-width:200px">
+      <input class="ctrl-input" id="log-payment-amount" placeholder="Amount received e.g. 5000" style="min-width:140px" type="number">
+      <button class="btn-primary" onclick="addPayment()" style="padding:7px 16px;font-size:12px">+ Add Payment</button>
+    </div>
+    <div id="log-payments-list" style="margin-bottom:18px"></div>
+    <div class="log-section-label">Flags for Joe's attention</div>
+    <textarea class="ctrl-input" id="log-flags" placeholder="e.g. ABL has not responded in 3 weeks — recommend escalation. Sunbright promised payment by June 25." style="width:100%;min-height:80px;resize:vertical;font-size:13px;line-height:1.5;padding:10px"></textarea>
+    <div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap;align-items:center">
+      <button class="btn-primary" onclick="sendLogToJoe()" id="btn-send-joe" style="font-size:13px">→ Email Report to Joe</button>
+      <button class="btn-default" onclick="copyLogToClipboard()" id="btn-copy-log" style="font-size:13px">⍘ Copy Report</button>
+      <button class="btn-default" onclick="clearLog()" style="font-size:13px;color:var(--rust)">Clear Session</button>
+      <span id="log-send-status" style="font-family:var(--sans);font-size:12px;color:var(--teal);font-weight:700"></span>
+    </div>
+    <div style="margin-top:32px;padding-top:24px;border-top:1px solid var(--line)">
+      <div class="log-section-label">Past sessions (this device)</div>
+      <div id="log-history-list" style="font-family:var(--sans);font-size:12.5px;color:#6b6357"></div>
+    </div>
+  </div>
+
+  <!-- CFO REPORT TAB -->
+  <div class="tab-panel" id="tab-cfo">
+    <div class="dash-header">
+      <div><div class="dash-eyebrow">Independence Health Contractors</div><h1 class="dash-title">CFO Report</h1></div>
+      <div class="dash-meta" id="cfo-meta"></div>
+    </div>
+    <div class="log-session-bar" style="margin-bottom:18px">
+      <div>
+        <span class="field-label" style="display:inline-block;margin-bottom:0;margin-right:10px">Report type:</span>
+        <div class="pill-group" style="display:inline-flex">
+          <button class="pill active" data-cfo="monday" onclick="setCfoType(this)">Monday Report</button>
+          <button class="pill" data-cfo="thursday" onclick="setCfoType(this)">Thursday Report</button>
+        </div>
+      </div>
+      <div style="margin-left:auto;font-family:var(--sans);font-size:12px;color:#8a8174" id="cfo-date-display"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--ink);border:1px solid var(--ink);margin-bottom:18px">
+      <div style="background:var(--paper);padding:12px 18px"><div class="sum-label">Total outstanding</div><div class="sum-val rust" id="cfo-total-open" style="font-size:20px">—</div></div>
+      <div style="background:var(--paper);padding:12px 18px"><div class="sum-label">Agencies with open balance</div><div class="sum-val" id="cfo-agency-count" style="font-size:20px">—</div></div>
+      <div style="background:var(--paper);padding:12px 18px"><div class="sum-label">At 60+ days (suspension tier)</div><div class="sum-val rust" id="cfo-sixty-count" style="font-size:20px">—</div></div>
+      <div style="background:var(--paper);padding:12px 18px"><div class="sum-label">Invoices paid in full</div><div class="sum-val paid-color" id="cfo-paid-count" style="font-size:20px">—</div></div>
+    </div>
+    <div class="log-section-label">1 — Collections since last report</div>
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+      <input class="ctrl-input" id="cfo-collected-agency" placeholder="Agency name" style="min-width:200px">
+      <input class="ctrl-input" id="cfo-collected-amount" placeholder="Amount collected" type="number" style="min-width:140px">
+      <button class="btn-primary" onclick="addCfoPayment()" style="padding:7px 16px;font-size:12px">+ Add</button>
+    </div>
+    <div id="cfo-payments-list" style="margin-bottom:6px"></div>
+    <div style="font-family:var(--sans);font-size:12px;color:#8a8174;margin-bottom:18px">Total collected this period: <strong id="cfo-collected-total" style="color:var(--paid)">$0.00</strong></div>
+    <div class="log-section-label">2 — Outstanding balance by agency (auto-populated)</div>
+    <div class="table-wrap" style="margin-bottom:18px">
+      <table style="min-width:500px">
+        <thead><tr>
+          <th style="cursor:default">Agency</th>
+          <th style="cursor:default;text-align:right">Open Balance</th>
+          <th style="cursor:default">Escalation Tier</th>
+          <th style="cursor:default">Joe's Status Note</th>
+        </tr></thead>
+        <tbody id="cfo-agency-tbody"></tbody>
+      </table>
+    </div>
+    <div class="log-section-label">3 — AP activity summary (from Christine's last log)</div>
+    <textarea class="ctrl-input" id="cfo-ap-summary" placeholder="e.g. Christine sent 14 emails and 8 texts this period. ABL responded — promised payment by June 25. Sunbright unresponsive for 3 weeks." style="width:100%;min-height:80px;resize:vertical;font-size:13px;line-height:1.5;padding:10px;margin-bottom:18px"></textarea>
+    <div class="log-section-label">4 — Escalation decisions &amp; status changes</div>
+    <textarea class="ctrl-input" id="cfo-escalation" placeholder="e.g. ABL Health Care moved to 50-day final warning — Joe approved email. Sunbright at 60 days — recommending service suspension pending owner approval." style="width:100%;min-height:80px;resize:vertical;font-size:13px;line-height:1.5;padding:10px;margin-bottom:18px"></textarea>
+    <div class="log-section-label">5 — Flags &amp; notes for owner</div>
+    <textarea class="ctrl-input" id="cfo-flags" placeholder="e.g. Mary's Help HH has $53K outstanding across 3 months — recommend owner call. BLC paid Feb balance but June invoice still open." style="width:100%;min-height:80px;resize:vertical;font-size:13px;line-height:1.5;padding:10px;margin-bottom:18px"></textarea>
+    <div class="log-section-label">6 — Action plan for next 3–4 days</div>
+    <textarea class="ctrl-input" id="cfo-action-plan" placeholder="e.g. Mon: Christine sends batch emails to all 30+ day agencies. Tue: Follow up with ABL and Sunbright directly. Wed: Review any responses, update balances. Thu: Send next report to owner." style="width:100%;min-height:100px;resize:vertical;font-size:13px;line-height:1.5;padding:10px;margin-bottom:18px"></textarea>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <button class="btn-primary" onclick="copyCfoReport()" style="font-size:13px">⍘ Copy PDF Report</button>
+      <button class="btn-default" onclick="downloadCfoPdf()" style="font-size:13px">↓ Download PDF</button>
+      <button class="btn-default" onclick="clearCfoReport()" style="font-size:13px;color:var(--rust)">Clear Report</button>
+      <span id="cfo-status" style="font-family:var(--sans);font-size:12px;color:var(--teal);font-weight:700"></span>
+    </div>
+    <div style="margin-top:32px;padding-top:24px;border-top:1px solid var(--line)">
+      <div class="log-section-label">Past CFO reports (this device)</div>
+      <div id="cfo-history-list" style="font-family:var(--sans);font-size:12.5px;color:#6b6357"></div>
+    </div>
+  </div>
+
+
+
+  <!-- DISPUTE QUEUE TAB -->
+  <div class="tab-panel" id="tab-disputes">
+    <div class="dash-header">
+      <div>
+        <div class="dash-eyebrow">Independence Health Contractors</div>
+        <h1 class="dash-title">Dispute Queue</h1>
+      </div>
+      <div class="dash-meta" id="dq-meta"></div>
+    </div>
+    <div class="dispute-summary-grid">
+      <div class="sum-cell"><div class="sum-label">Agencies with disputes</div><div class="sum-val" id="dq-agency-count">&#8212;</div></div>
+      <div class="sum-cell"><div class="sum-label">Open tasks</div><div class="sum-val rust" id="dq-open-count">&#8212;</div></div>
+      <div class="sum-cell"><div class="sum-label">In progress</div><div class="sum-val" style="color:var(--gold)" id="dq-inprog-count">&#8212;</div></div>
+      <div class="sum-cell"><div class="sum-label">Resolved</div><div class="sum-val paid-color" id="dq-resolved-count">&#8212;</div></div>
+    </div>
+    <div class="dispute-paste-box">
+      <h3>Import Dispute / Correction Items</h3>
+      <p>Paste text <em>or</em> upload a screenshot &#8212; email, spreadsheet, payroll report, anything. Claude Vision reads images directly and turns every row into a task.</p>
+      <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px">
+        <div>
+          <label class="field-label">Agency</label>
+          <select class="dispute-agency-select" id="dq-agency-sel"><option value="">Select agency&#8230;</option></select>
+        </div>
+      </div>
+
+      <!-- Image drop zone -->
+      <div id="dq-image-zone" onclick="document.getElementById('dq-image-input').click()"
+        ondragover="event.preventDefault();this.classList.add('dq-drag-over')"
+        ondragleave="this.classList.remove('dq-drag-over')"
+        ondrop="dqHandleImageDrop(event)"
+        style="border:2px dashed var(--line);border-radius:8px;padding:18px 24px;text-align:center;cursor:pointer;margin-bottom:10px;transition:all .2s;background:var(--paper2);position:relative;">
+        <input type="file" id="dq-image-input" accept="image/*" style="display:none" onchange="dqHandleImageFile(this)">
+        <div id="dq-image-preview-wrap" style="display:none;margin-bottom:10px;">
+          <img id="dq-image-preview" style="max-height:160px;max-width:100%;border-radius:6px;border:1px solid var(--line);box-shadow:0 2px 8px rgba(0,0,0,.08)">
+          <button onclick="event.stopPropagation();dqClearImage()" style="position:absolute;top:10px;right:10px;background:var(--rust);color:#fff;border:none;border-radius:50%;width:24px;height:24px;font-size:14px;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center;">&#215;</button>
+        </div>
+        <div id="dq-image-prompt" style="font-family:var(--sans);">
+          <div style="font-size:22px;margin-bottom:6px;">&#128444;</div>
+          <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:3px;">Drop screenshot here or click to upload</div>
+          <div style="font-size:11.5px;color:#9CA3AF;">Payroll report, email, spreadsheet screenshot &#8212; any image works</div>
+        </div>
+      </div>
+
+      <!-- Text paste (optional when image is loaded) -->
+      <label class="field-label" id="dq-text-label">Or paste text / email / corrections below</label>
+      <textarea class="dispute-paste-area" id="dq-paste-input" style="min-height:70px" placeholder="Paste anything here &#10;&#10;e.g. Hi Christine, please correct the following before we can process payment:&#10;- Jane Doe 5/12 OT Eval - documentation incomplete, missing therapist signature&#10;- John Smith 5/14 PTA revisit - no EVV on file&#10;- Maria Lopez 5/18 OASIS DC - missing DC instructions and NMNOC&#10;&#10;Or paste a spreadsheet, a list of line items, or any notes from the agency."></textarea>
+
+      <div style="display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap">
+        <button class="btn-parse" id="dq-parse-btn" onclick="parseDisputeText()">&#8594; Parse with AI</button>
+        <span id="dq-parse-status" style="font-family:var(--sans);font-size:12px;color:var(--teal);font-weight:700"></span>
+      </div>
+    </div>
+    <div class="log-section-label">Disputes by Agency &#8212; click to expand</div>
+    <div id="dq-agency-list">
+      <div class="no-disputes-msg">No disputes logged yet. Use the paste box above to import correction items from an agency.</div>
+    </div>
+  </div>
+
+</div>
+
+
+<script>
+// ── DATA ──────────────────────────────────────────────────────────────────────
+const SEED = [{"date":"02/09/2026","num":"1540","name":"1st Choice Home Health","due":"02/09/2026","amount":3225,"open":0},{"date":"03/09/2026","num":"1559","name":"1st Choice Home Health","due":"03/10/2026","amount":9785,"open":0},{"date":"04/13/2026","num":"1578","name":"1st Choice Home Health","due":"04/13/2026","amount":10425,"open":0},{"date":"05/08/2026","num":"1599","name":"1st Choice Home Health","due":"05/08/2026","amount":7720,"open":6155},{"date":"06/06/2026","num":"1619","name":"1st Choice Home Health","due":"06/06/2026","amount":8260,"open":8260},{"date":"02/09/2026","num":"1541","name":"A1 Pro Home Health","due":"02/09/2026","amount":18835,"open":0},{"date":"03/09/2026","num":"1560","name":"A1 Pro Home Health","due":"03/09/2026","amount":15770,"open":0},{"date":"04/13/2026","num":"1579","name":"A1 Pro Home Health","due":"04/13/2026","amount":18500,"open":2095},{"date":"05/08/2026","num":"1600","name":"A1 Pro Home Health","due":"05/08/2026","amount":16935,"open":0},{"date":"06/06/2026","num":"1620","name":"A1 Pro Home Health","due":"06/06/2026","amount":17725,"open":160},{"date":"02/09/2026","num":"1542","name":"ABL Health Care","due":"02/09/2026","amount":7555,"open":7555},{"date":"03/09/2026","num":"1561","name":"ABL Health Care","due":"03/10/2026","amount":7940,"open":7940},{"date":"04/13/2026","num":"1580","name":"ABL Health Care","due":"04/13/2026","amount":9245,"open":9245},{"date":"05/08/2026","num":"1601","name":"ABL Health Care","due":"05/08/2026","amount":10720,"open":10720},{"date":"06/06/2026","num":"1621","name":"ABL Health Care","due":"06/06/2026","amount":12385,"open":12385},{"date":"06/07/2026","num":"1636","name":"Aspire Home Health","due":"06/07/2026","amount":1060,"open":0},{"date":"06/07/2026","num":"1639","name":"Aspire Home Health","due":"06/07/2026","amount":200,"open":0},{"date":"02/09/2026","num":"1543","name":"Best Home Health","due":"02/09/2026","amount":11205,"open":0},{"date":"03/09/2026","num":"1562","name":"Best Home Health","due":"03/10/2026","amount":20805,"open":330},{"date":"04/13/2026","num":"1581","name":"Best Home Health","due":"04/13/2026","amount":18060,"open":1410},{"date":"05/08/2026","num":"1598","name":"Best Home Health","due":"05/08/2026","amount":18000,"open":650},{"date":"06/06/2026","num":"1622","name":"Best Home Health","due":"06/06/2026","amount":16200,"open":16200},{"date":"01/15/2026","num":"1501","name":"BLC HH","due":"01/15/2026","amount":43230,"open":0},{"date":"02/09/2026","num":"1544","name":"BLC HH","due":"02/09/2026","amount":57320,"open":6310},{"date":"03/09/2026","num":"1558","name":"BLC HH","due":"03/10/2026","amount":42960,"open":0},{"date":"04/13/2026","num":"1577","name":"BLC HH","due":"04/13/2026","amount":41575,"open":2380},{"date":"05/08/2026","num":"1602","name":"BLC HH","due":"05/08/2026","amount":39680,"open":0},{"date":"06/06/2026","num":"1623","name":"BLC HH","due":"06/06/2026","amount":47455,"open":3030},{"date":"02/09/2026","num":"1546","name":"Care Must Home Health","due":"02/09/2026","amount":4340,"open":0},{"date":"03/09/2026","num":"1564","name":"Care Must Home Health","due":"03/10/2026","amount":6325,"open":0},{"date":"04/14/2026","num":"1589","name":"Care Must Home Health","due":"04/14/2026","amount":8045,"open":0},{"date":"05/08/2026","num":"1603","name":"Care Must Home Health","due":"05/08/2026","amount":7955,"open":0},{"date":"06/06/2026","num":"1625","name":"Care Must Home Health","due":"06/06/2026","amount":10470,"open":0},{"date":"02/09/2026","num":"1545","name":"Careplus Home Health","due":"02/09/2026","amount":390,"open":0},{"date":"03/09/2026","num":"1563","name":"Careplus Home Health","due":"03/10/2026","amount":615,"open":0},{"date":"04/13/2026","num":"1582","name":"Careplus Home Health","due":"04/13/2026","amount":1690,"open":215},{"date":"06/06/2026","num":"1624","name":"Careplus Home Health","due":"06/06/2026","amount":1585,"open":1585},{"date":"02/09/2026","num":"1547","name":"Caring Hands","due":"02/09/2026","amount":13730,"open":165},{"date":"03/09/2026","num":"1565","name":"Caring Hands","due":"03/10/2026","amount":13515,"open":0},{"date":"04/13/2026","num":"1584","name":"Caring Hands","due":"05/13/2026","amount":15490,"open":1155},{"date":"05/08/2026","num":"1604","name":"Caring Hands","due":"05/08/2026","amount":3940,"open":50},{"date":"06/06/2026","num":"1626","name":"Caring Hands","due":"06/06/2026","amount":17180,"open":0},{"date":"02/09/2026","num":"1548","name":"Compassionate HH","due":"02/09/2026","amount":5790,"open":0},{"date":"03/09/2026","num":"1566","name":"Compassionate HH","due":"03/31/2026","amount":14245,"open":0},{"date":"04/13/2026","num":"1585","name":"Compassionate HH","due":"04/13/2026","amount":18475,"open":0},{"date":"05/08/2026","num":"1605","name":"Compassionate HH","due":"05/08/2026","amount":13290,"open":13290},{"date":"06/06/2026","num":"1627","name":"Compassionate HH","due":"06/06/2026","amount":5770,"open":5770},{"date":"03/09/2026","num":"1567","name":"GIMAG","due":"03/10/2026","amount":740,"open":0},{"date":"04/13/2026","num":"1586","name":"GIMAG","due":"04/13/2026","amount":1065,"open":0},{"date":"05/08/2026","num":"1606","name":"GIMAG","due":"05/08/2026","amount":700,"open":0},{"date":"06/07/2026","num":"1637","name":"Great Valley Home Health","due":"06/07/2026","amount":330,"open":0},{"date":"06/07/2026","num":"1638","name":"Great Valley Home Health","due":"06/07/2026","amount":330,"open":0},{"date":"03/09/2026","num":"1568","name":"Guardian Home Healthcare","due":"03/10/2026","amount":1275,"open":0},{"date":"04/13/2026","num":"1587","name":"Guardian Home Healthcare","due":"04/13/2026","amount":565,"open":565},{"date":"06/01/2026","num":"1611","name":"Guardian Home Healthcare","due":"06/01/2026","amount":1110,"open":1110},{"date":"02/09/2026","num":"1549","name":"Hallway Healthcare","due":"02/09/2026","amount":400,"open":0},{"date":"03/09/2026","num":"1569","name":"Hallway Healthcare","due":"03/10/2026","amount":1600,"open":0},{"date":"04/13/2026","num":"1588","name":"Hallway Healthcare","due":"04/13/2026","amount":2400,"open":0},{"date":"05/08/2026","num":"1607","name":"Hallway Healthcare","due":"05/08/2026","amount":1200,"open":0},{"date":"06/06/2026","num":"1628","name":"Hallway Healthcare","due":"06/06/2026","amount":800,"open":0},{"date":"03/16/2026","num":"1576","name":"Mary's Help Home Health Services, Inc. 1","due":"03/17/2026","amount":3290,"open":0},{"date":"04/14/2026","num":"1590","name":"Mary's Help Home Health Services, Inc. 1","due":"04/14/2026","amount":19450,"open":210},{"date":"03/01/2026","num":"1595","name":"Mary's Help Home Health Services, Inc. 1","due":"03/31/2026","amount":10000,"open":0},{"date":"05/08/2026","num":"1608","name":"Mary's Help Home Health Services, Inc. 1","due":"05/08/2026","amount":26130,"open":26130},{"date":"06/06/2026","num":"1629","name":"Mary's Help Home Health Services, Inc. 1","due":"06/06/2026","amount":23640,"open":23640},{"date":"02/09/2026","num":"1550","name":"Onehealth Healthcare","due":"02/09/2026","amount":2780,"open":0},{"date":"03/09/2026","num":"1570","name":"Onehealth Healthcare","due":"03/10/2026","amount":1655,"open":0},{"date":"06/07/2026","num":"1630","name":"Onehealth Healthcare","due":"06/07/2026","amount":1410,"open":0},{"date":"06/07/2026","num":"1631","name":"Onehealth Healthcare","due":"06/07/2026","amount":405,"open":405},{"date":"02/09/2026","num":"1551","name":"Premier Home Health","due":"02/09/2026","amount":8870,"open":380},{"date":"03/09/2026","num":"1571","name":"Premier Home Health","due":"03/10/2026","amount":8790,"open":0},{"date":"04/14/2026","num":"1591","name":"Premier Home Health","due":"04/14/2026","amount":12730,"open":0},{"date":"05/08/2026","num":"1609","name":"Premier Home Health","due":"05/08/2026","amount":9435,"open":9435},{"date":"06/07/2026","num":"1632","name":"Premier Home Health","due":"06/07/2026","amount":9595,"open":9595},{"date":"02/09/2026","num":"1552","name":"ProHealth","due":"02/09/2026","amount":13260,"open":0},{"date":"03/09/2026","num":"1572","name":"ProHealth","due":"03/10/2026","amount":12980,"open":0},{"date":"04/14/2026","num":"1592","name":"ProHealth","due":"04/14/2026","amount":9650,"open":9650},{"date":"05/08/2026","num":"1597","name":"ProHealth","due":"05/08/2026","amount":17615,"open":17615},{"date":"06/07/2026","num":"1633","name":"ProHealth","due":"06/07/2026","amount":15660,"open":15660},{"date":"02/09/2026","num":"1553","name":"Silverline Home Health","due":"02/09/2026","amount":15490,"open":0},{"date":"03/09/2026","num":"1573","name":"Silverline Home Health","due":"03/10/2026","amount":15005,"open":0},{"date":"04/14/2026","num":"1593","name":"Silverline Home Health","due":"04/14/2026","amount":5115,"open":0},{"date":"05/08/2026","num":"1610","name":"Silverline Home Health","due":"05/08/2026","amount":370,"open":0},{"date":"06/07/2026","num":"1634","name":"Silverline Home Health","due":"06/07/2026","amount":380,"open":0},{"date":"02/09/2026","num":"1554","name":"Sunbright Home Health","due":"02/09/2026","amount":12330,"open":0},{"date":"03/16/2026","num":"1574","name":"Sunbright Home Health","due":"03/17/2026","amount":13540,"open":8540},{"date":"04/14/2026","num":"1594","name":"Sunbright Home Health","due":"04/14/2026","amount":13925,"open":13925},{"date":"05/08/2026","num":"1596","name":"Sunbright Home Health","due":"05/08/2026","amount":18740,"open":18740},{"date":"06/07/2026","num":"1635","name":"Sunbright Home Health","due":"06/07/2026","amount":16615,"open":16615}];
+
+let DATA = JSON.parse(JSON.stringify(SEED));
+let UPLOADS = [{ name: 'Independence_Health_Contractors (seed)', date: new Date().toLocaleDateString(), count: SEED.length }];
+let pendingRows = null, pendingFilename = null;
+let sortKey = 'date', sortDir = 1, statusFilter = '';
+let chatMessages = [];
+let aiThinking = false;
+let gmailToken = null;
+let gmailUser = null;
+
+const fmt = n => '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtShort = n => n >= 1e6 ? '$' + (n/1e6).toFixed(1) + 'M' : n >= 1e3 ? '$' + (n/1e3).toFixed(0) + 'K' : fmt(n);
+const parseAmt = s => parseFloat(String(s).replace(/[$,]/g, '')) || 0;
+function toDate(s) { const [m,d,y] = s.split('/').map(Number); return new Date(y, m-1, d); }
+function monthKey(s) { const [m,,y] = s.split('/'); return `${y}-${m.padStart(2,'0')}`; }
+function monthLabel(k) { const [y,m] = k.split('-'); return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+m-1] + ' ' + y; }
+function rowStatus(r) { if (r.open <= 0) return 'paid'; if (r.open >= r.amount) return 'open'; return 'partial'; }
+function daysOverdue(dueStr) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const due = toDate(dueStr);
+  const diff = Math.floor((today - due) / 86400000);
+  return Math.max(0, diff);
+}
+function daysBadge(days) {
+  if (days === 0) return '<span class="days-badge days-current">Current</span>';
+  if (days >= 60) return `<span class="days-badge days-60">${days}d — 60+ ⚠</span>`;
+  if (days >= 50) return `<span class="days-badge days-50">${days}d — 50+</span>`;
+  if (days >= 40) return `<span class="days-badge days-40">${days}d — 40+</span>`;
+  if (days >= 30) return `<span class="days-badge days-30">${days}d — 30+</span>`;
+  return `<span class="days-badge days-current">${days}d</span>`;
+}
+function showToast(msg, color) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.background = color || 'var(--teal)';
+  t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 3500);
+}
+
+const GMAIL_CLIENT_ID = '694176481584-6t9s2sedj8h7rpi467kl9ajbhdg9b9bi.apps.googleusercontent.com';
+const GMAIL_SCOPES = 'https://www.googleapis.com/auth/gmail.compose';
+function initGmailStatus() {
+  const dot = document.getElementById('gmail-dot');
+  const txt = document.getElementById('gmail-status-text');
+  const acc = document.getElementById('gmail-account-text');
+  const saved = sessionStorage.getItem('gmail_token');
+  const savedUser = sessionStorage.getItem('gmail_user');
+  if (saved) {
+    gmailToken = saved; gmailUser = savedUser;
+    dot.classList.add('connected');
+    txt.textContent = 'Gmail connected';
+    acc.textContent = gmailUser ? '· ' + gmailUser : '';
+  } else {
+    dot.classList.remove('connected');
+    txt.innerHTML = 'Gmail not connected — <a href="#" onclick="connectGmail();return false;" style="color:var(--teal);font-weight:700">Connect AP@ Gmail</a> to enable one-click drafts';
+    acc.textContent = '';
+  }
+}
+function connectGmail() {
+  const params = new URLSearchParams({
+    client_id: GMAIL_CLIENT_ID,
+    redirect_uri: 'https://independence-invoice-dashboard.onrender.com',
+    response_type: 'token',
+    scope: GMAIL_SCOPES,
+    prompt: 'select_account'
+  });
+  const popup = window.open('https://accounts.google.com/o/oauth2/v2/auth?' + params.toString(), 'gmail_auth', 'width=500,height=600,left=200,top=100');
+  const interval = setInterval(() => {
+    try {
+      if (popup.closed) { clearInterval(interval); return; }
+      const hash = popup.location.hash;
+      if (hash && hash.includes('access_token')) {
+        clearInterval(interval); popup.close();
+        const p = new URLSearchParams(hash.substring(1));
+        gmailToken = p.get('access_token');
+        sessionStorage.setItem('gmail_token', gmailToken);
+        fetchGmailUser();
+      }
+    } catch(e) {}
+  }, 500);
+}
+async function fetchGmailUser() {
+  try {
+    const res = await fetch('https://www.googleapis.com/gmail/v1/users/me/profile', { headers: { Authorization: 'Bearer ' + gmailToken } });
+    const d = await res.json();
+    gmailUser = d.emailAddress || '';
+    sessionStorage.setItem('gmail_user', gmailUser);
+  } catch(e) {}
+  initGmailStatus(); renderDashboard();
+  showToast('Gmail connected ✓ · ' + (gmailUser || 'AP@'));
+}
+
+function groupByAgency(rows) {
+  const map = {};
+  rows.forEach(r => { if (!map[r.name]) map[r.name] = []; map[r.name].push(r); });
+  return map;
+}
+function agencyMaxDays(invoices) { return Math.max(...invoices.map(r => daysOverdue(r.due))); }
+
+function buildAgencyEmail(agencyName, invoices) {
+  const totalOpen = invoices.reduce((s, r) => s + r.open, 0);
+  const maxDays = agencyMaxDays(invoices);
+  const totalFmt = fmt(totalOpen);
+  const isPastDue = maxDays >= 30;
+  const rowColor = isPastDue ? '#b91c1c' : '#15803d';
   const rows = invoices.map(r => {
     const days = daysOverdue(r.due);
     const statusLabel = days > 0 ? `${days} days overdue` : `Due in ${Math.abs(days)} days`;
     return `<tr style="border-bottom:1px solid #e5e7eb;"><td style="padding:6px 10px;color:${rowColor};font-weight:bold;">Invoice #${r.num}</td><td style="padding:6px 10px;color:${rowColor};font-weight:bold;">Due: ${r.due}</td><td style="padding:6px 10px;color:${rowColor};font-weight:bold;">Billed: ${fmt(r.amount)}</td><td style="padding:6px 10px;color:${rowColor};font-weight:bold;">Open: ${fmt(r.open)}</td><td style="padding:6px 10px;color:${rowColor};font-weight:bold;">${statusLabel}</td></tr>`;
   }).join('');
   const invoiceTable = `<table style="border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:13px;margin:10px 0;"><thead><tr style="background:#f3f4f6;"><th style="padding:7px 10px;text-align:left;">Invoice</th><th style="padding:7px 10px;text-align:left;">Due Date</th><th style="padding:7px 10px;text-align:left;">Billed</th><th style="padding:7px 10px;text-align:left;">Open Balance</th><th style="padding:7px 10px;text-align:left;">Status</th></tr></thead><tbody>${rows}</tbody></table><p style="font-family:Arial,sans-serif;font-size:13px;color:${rowColor};font-weight:bold;">Total Outstanding: ${totalFmt}</p>`;
-```
-
-Replace it with:
-
-```javascript
-  let totalWithFees = 0;
-  const rows = invoices.map(r => {
-    const days = daysOverdue(r.due);
-    const statusLabel = days > 0 ? `${days} days overdue` : `Due in ${Math.abs(days)} days`;
-    const feeCalc = calcLateFee(r.open, days);
-    totalWithFees += feeCalc.total;
-    if (isPastDue && days >= 31) {
-      return `<tr style="border-bottom:1px solid #e5e7eb;"><td style="padding:6px 10px;color:${rowColor};font-weight:bold;">Invoice #${r.num}</td><td style="padding:6px 10px;color:${rowColor};font-weight:bold;">Due: ${r.due}</td><td style="padding:6px 10px;color:${rowColor};font-weight:bold;">${statusLabel}</td><td style="padding:6px 10px;color:${rowColor};">Open: ${fmt(r.open)}</td><td style="padding:6px 10px;color:${rowColor};">Late Fees: ${fmt(feeCalc.fees)}</td><td style="padding:6px 10px;color:${rowColor};font-weight:bold;">New Total: ${fmt(feeCalc.total)}</td></tr>`;
-    }
-    return `<tr style="border-bottom:1px solid #e5e7eb;"><td style="padding:6px 10px;color:${rowColor};font-weight:bold;">Invoice #${r.num}</td><td style="padding:6px 10px;color:${rowColor};font-weight:bold;">Due: ${r.due}</td><td style="padding:6px 10px;color:${rowColor};font-weight:bold;">Billed: ${fmt(r.amount)}</td><td style="padding:6px 10px;color:${rowColor};font-weight:bold;">Open: ${fmt(r.open)}</td><td style="padding:6px 10px;color:${rowColor};font-weight:bold;">${statusLabel}</td></tr>`;
-  }).join('');
-  const tableHeader = isPastDue
-    ? `<tr style="background:#f3f4f6;"><th style="padding:7px 10px;text-align:left;">Invoice</th><th style="padding:7px 10px;text-align:left;">Due Date</th><th style="padding:7px 10px;text-align:left;">Status</th><th style="padding:7px 10px;text-align:left;">Original Open</th><th style="padding:7px 10px;text-align:left;">Late Fees Accrued</th><th style="padding:7px 10px;text-align:left;">New Total Due</th></tr>`
-    : `<tr style="background:#f3f4f6;"><th style="padding:7px 10px;text-align:left;">Invoice</th><th style="padding:7px 10px;text-align:left;">Due Date</th><th style="padding:7px 10px;text-align:left;">Billed</th><th style="padding:7px 10px;text-align:left;">Open Balance</th><th style="padding:7px 10px;text-align:left;">Status</th></tr>`;
-  const invoiceTable = `<table style="border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:13px;margin:10px 0;"><thead>${tableHeader}</thead><tbody>${rows}</tbody></table><p style="font-family:Arial,sans-serif;font-size:13px;color:${rowColor};font-weight:bold;">Total Outstanding (Original): ${totalFmt}${isPastDue ? ` &nbsp;|&nbsp; Total With Late Fees: ${fmt(totalWithFees)}` : ''}</p>`;
-```
-
-## Step 3 — Replace the generic `lateFeeNotice` with a real summary
-
-Find:
-```javascript
+  const discountNotice = `<p style="font-family:Arial,sans-serif;font-size:15px;font-weight:bold;color:#15803d;margin:18px 0;padding:12px 16px;border:2px solid #15803d;border-radius:6px;">EARLY PAYMENT DISCOUNT: If your agency has maintained good standing (no invoices 30+ days past due in the last 60 days), you are eligible to earn a 2% discount by paying this invoice in full within 30 days of the invoice date. The invoice must be paid at the full invoice amount unless otherwise agreed upon in writing by Independence administrators. Please note: late fees will begin accruing and the invoice balance will increase if payment is not received within 30 days of the invoice date.</p>`;
   const lateFeeNotice = `<p style="font-family:Arial,sans-serif;font-size:13px;font-weight:bold;color:#b91c1c;margin:16px 0;padding:12px 16px;border:2px solid #b91c1c;border-radius:6px;">LATE FEE NOTICE: Per the Invoicing and Payment Terms of your signed contract with Independence Health Contractors, the following late fees are now applied to each overdue invoice:<br><br>- An immediate 3% late interest fee has been applied to the total balance of each outstanding invoice.<br>- An additional $50.00 per week accrues for every week the invoice remains unpaid. For example, an invoice 4 weeks past due carries an additional $200.00 in weekly late fees, plus the 3% interest applied to the updated balance.<br><br>These fees will continue to accrue until the invoice is paid in full. Please remit payment immediately to stop further accrual.</p>`;
-```
+  const sig = `<p style="font-family:Arial,sans-serif;font-size:13px;margin-top:24px;">Sincerely,<br><strong>Christine Woods</strong><br>Accounts Receivable Manager | Independence Health Contractors<br>AP@independencehealthc.com | (513) 532-9819</p>`;
+  const base = `font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#111;max-width:680px;`;
+  if (maxDays >= 60) { return { subject: `SERVICE SUSPENSION NOTICE - ${agencyName} - ${totalFmt} Outstanding - ${maxDays}+ Days Overdue`, body: `<div style="${base}"><p>Dear ${agencyName} Billing / Leadership,</p><p>Independence Health Contractors genuinely values our Contracting Partnership with ${agencyName} and the patients our clinicians serve on your behalf. It is because of that commitment that we must now communicate the following with the utmost seriousness.</p><p>The outstanding invoices below have now exceeded 60 days past due. Despite multiple documented attempts to reach your team, these balances remain unresolved. We have reached the threshold outlined in our signed agreement and are left with no alternative but to take immediate action.</p><p><strong style="color:#b91c1c;">Outstanding Invoices:</strong></p>${invoiceTable}${lateFeeNotice}<p><strong style="color:#b91c1c;">Effective immediately, Independence Health Contractors is formally suspending acceptance of all new patient referrals from ${agencyName}. This decision was not made lightly and reflects the seriousness of the unresolved balance of ${totalFmt}.</strong></p><p><strong style="color:#b91c1c;">Effective Immediately:</strong></p><ul style="color:#b91c1c;font-weight:bold;"><li>Independence clinicians will not accept any new patient referrals from your agency</li><li>Patients currently under an active Plan of Care will continue to be seen through their current authorization period only</li><li>No new evaluations or Start of Care visits will be scheduled or accepted</li></ul><p><strong>This suspension will remain in effect until your agency reaches good standing, defined as all outstanding invoices paid in full OR all remaining invoices brought below 30 days past due. Alternatively, a written payment agreement signed by both parties with first payment received will also qualify.</strong></p><p><strong>We want to reinstate our Contracting Partnership as quickly as possible. Please contact us immediately to begin resolving this.</strong></p><ul><li><strong>Christine Woods (Accounts Receivable):</strong> AP@independencehealthc.com | (513) 532-9819</li><li><strong>Joe (CFO):</strong> ihc.cfo@gmail.com</li></ul>${sig}<p style="font-family:Arial,sans-serif;font-size:12px;color:#6b7280;">Independence Health Contractors | 5021 Verdugo Way Ste 105 PMB 224, Camarillo, CA 93012</p></div>` }; }
+  if (maxDays >= 45) { const daysToSuspension = 60 - maxDays; return { subject: `URGENT PAST DUE NOTICE - ${agencyName} - ${totalFmt} Outstanding - ${maxDays} Days Past Due`, body: `<div style="${base}"><p>Dear ${agencyName} Billing Team,</p><p>We value our Contracting Partnership with ${agencyName} and want to continue supporting your patients. However, we must be direct: the outstanding balance below has now reached ${maxDays} days past due, and your agency is approaching the 60-day threshold at which Independence Health Contractors will be required to halt acceptance of all new patient referrals.</p><p><strong style="color:#b91c1c;">Outstanding Invoices:</strong></p>${invoiceTable}${lateFeeNotice}<p><strong>We have made multiple documented attempts to reach your billing team. Please understand that these unpaid invoices are nearing a critical deadline — if full payment or a signed payment agreement is not received within the next ${daysToSuspension} days, our Contracting Partnership will require us to pause accepting all new patient visits from your agency, effective at the 60-day mark.</strong></p><p><strong>Late fees are actively accruing and the balance owed will continue to increase the longer this remains unresolved. We strongly urge you to contact us immediately so we can work toward a resolution and protect the continuity of care for your patients.</strong></p><ul><li><strong>Christine Woods (Accounts Receivable):</strong> AP@independencehealthc.com | (513) 532-9819</li></ul>${sig}</div>` }; }
+  if (maxDays >= 30) { return { subject: `Independence Past Due Invoice Notice - ${agencyName} - ${totalFmt} Outstanding`, body: `<div style="${base}"><p>Dear ${agencyName} Billing Team,</p><p>We hope this message finds you well. We sincerely value our Contracting Partnership with ${agencyName} and appreciate the opportunity to support your patients. However, the invoices below have now passed their 30-day due date and require your immediate attention.</p><p><strong style="color:#b91c1c;">Outstanding Invoices:</strong></p>${invoiceTable}${lateFeeNotice}<p><strong>Please be aware that our collections escalation process is now active. If these balances are not resolved promptly, this will continue to escalate and may ultimately result in a pause on our Contracting Partnership accepting new patient visits from your agency.</strong></p><p><strong>We want to resolve this quickly and keep our partnership on solid footing. Could you please confirm receipt of these invoices and provide an expected payment date? If there are any billing questions or discrepancies, please reach out right away — we are happy to work through them.</strong></p><p>Thank you for your prompt attention to this matter.</p>${sig}</div>` }; }
+  if (maxDays >= 1) { return { subject: `Independence Invoice Payment Reminder - ${agencyName} - ${totalFmt} Outstanding`, body: `<div style="${base}"><p>Hi ${agencyName} Billing Team,</p><p>I hope all is well. This is a friendly reminder from Independence Health Contractors regarding the outstanding invoices below. We truly appreciate your continued partnership and want to make sure these stay on your radar ahead of the due date.</p><p><strong style="color:#15803d;">Outstanding Invoices:</strong></p>${invoiceTable}${discountNotice}<p>Please do not hesitate to reach out if you have any questions or need any supporting documentation from our side. We are happy to help.</p><p>Thank you — we appreciate the partnership!</p>${sig}</div>` }; }
+  return { subject: `New Independence Invoice - ${agencyName} - ${totalFmt}`, body: `<div style="${base}"><p>Good afternoon,</p><p>Please find below our invoice and detailed visit summary for services provided by Independence Health Contractors. We appreciate your prompt attention to this matter and value the Contracting Partnership we have built with ${agencyName}.</p><p><strong style="color:#15803d;">Invoice Summary:</strong></p>${invoiceTable}${discountNotice}<p>If you have any questions, need additional documentation, or require a detailed visit list, please do not hesitate to reach out. We are happy to provide anything needed to facilitate timely payment.</p><p>Thank you for your business and your continued partnership. We look forward to continuing to support your patients.</p>${sig}</div>` };
+}
 
-Replace with:
-```javascript
-  const lateFeeNotice = `<p style="font-family:Arial,sans-serif;font-size:13px;font-weight:bold;color:#b91c1c;margin:16px 0;padding:12px 16px;border:2px solid #b91c1c;border-radius:6px;">LATE FEE NOTICE: Per the Invoicing and Payment Terms of your signed contract, a 3% late fee was applied at 31 days past due, and an additional $50.00 plus 3% compounding is added every 7 days thereafter until paid. The "New Total Due" column above reflects the current amount owed per invoice, including all accrued late fees as of today. These fees will continue to increase until payment is received in full.</p>`;
-```
+async function createGmailDraftForAgency(agencyName, invoices) {
+  if (!gmailToken) { connectGmail(); return false; }
+  const { subject, body } = buildAgencyEmail(agencyName, invoices);
+  const raw = [`From: AP@independencehealthc.com`, `To: `, `Subject: ${subject}`, `MIME-Version: 1.0\r\nContent-Type: text/html; charset=utf-8`, ``, body].join('\r\n');
+  const encoded = btoa(unescape(encodeURIComponent(raw))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/drafts', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + gmailToken, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: { raw: encoded } })
+  });
+  if (res.status === 401) { gmailToken = null; sessionStorage.removeItem('gmail_token'); initGmailStatus(); showToast('Gmail session expired — please reconnect', 'var(--rust)'); return false; }
+  return res.ok;
+}
 
-## Result
-- Tier 1/2 emails (current/under-30-day reminders): unchanged, no fee columns.
-- Tier 3 (30-44 days), 4 (45-59), 5 (60+): each invoice row now shows Original
-  Open, Late Fees Accrued, and New Total Due, plus a grand total with fees at
-  the bottom of the table.
+async function draftAgency(btn, agencyName) {
+  if (!gmailToken) { connectGmail(); return; }
+  const invoices = DATA.filter(r => r.name === agencyName && r.open > 0);
+  if (!invoices.length) return;
+  btn.disabled = true; btn.textContent = '…'; btn.classList.add('sending');
+  const ok = await createGmailDraftForAgency(agencyName, invoices);
+  btn.classList.remove('sending');
+  if (ok) { btn.textContent = '✓ Drafted'; btn.classList.add('sent'); showToast(`Draft created for ${agencyName} ✓`); }
+  else { btn.disabled = false; btn.textContent = '→ Draft Email'; showToast('Failed — check Gmail connection', 'var(--rust)'); }
+}
 
-## How to deploy (your usual process)
-1. GitHub repo → `index.html` → pencil icon.
-2. Cmd+A, Delete, paste full updated file (or use the 3 find/replace edits
-   above in TextEdit against your current copy).
-3. Commit.
-4. Wait ~2 min for Render auto-deploy, hard refresh (Cmd+Shift+R) to verify.
+async function batchDraftAll() {
+  if (!gmailToken) { connectGmail(); return; }
+  const agencyMap = groupByAgency(DATA.filter(r => r.open > 0));
+  const agencies = Object.entries(agencyMap).filter(([, invs]) => agencyMaxDays(invs) >= 30);
+  if (agencies.length === 0) { showToast('No agencies with invoices 30+ days overdue'); return; }
+  const prog = document.getElementById('batch-progress-agency') || document.getElementById('batch-progress');
+  const btn1 = document.getElementById('btn-batch-all');
+  const btn2 = document.getElementById('btn-batch-agency');
+  if (btn1) btn1.disabled = true;
+  if (btn2) btn2.disabled = true;
+  let done = 0;
+  for (const [agencyName, invoices] of agencies) {
+    if (prog) prog.textContent = `${done}/${agencies.length} drafts created…`;
+    const ok = await createGmailDraftForAgency(agencyName, invoices);
+    if (ok) done++;
+    await new Promise(res => setTimeout(res, 400));
+  }
+  if (btn1) btn1.disabled = false;
+  if (btn2) btn2.disabled = false;
+  if (prog) prog.textContent = '';
+  showToast(`${done} agency draft${done !== 1 ? 's' : ''} created in AP@ Drafts ✓`);
+  renderAgencyView();
+}
+
+const AGENCY_PHONES = {
+  'ABL Health Care': { phone: '14157168252', contact: 'Max' },
+  'A1 Pro Home Health': { phone: '15106057198', contact: 'Kevin' },
+  'Aspire Home Health': { phone: '15108766753', contact: 'Rowena' },
+  'Best Home Health': { phone: '17075904224', contact: 'Shivani' },
+  'BLC HH': { phone: '15107371139', contact: 'Odezza' },
+  'Careplus Home Health': { phone: '19257234497', contact: '' },
+  'Compassionate HH': { phone: '17079030022', contact: 'Theresa' },
+  'Great Valley Home Health': { phone: '17079804694', contact: 'Ferdinand' },
+  'Hallway Healthcare': { phone: '19254336811', contact: 'Caitlin' },
+  'ProHealth': { phone: '14087711108', contact: 'Wylie' },
+  'Onehealth Healthcare': { phone: '19257269541', contact: 'Zakia' },
+  "Mary's Help Home Health Services, Inc. 1": { phone: '14159872114', contact: 'Yves' },
+  'Silverline Home Health': { phone: '15715054739', contact: 'Zain' },
+  'Sunbright Home Health': { phone: '15105528300', contact: 'Faiz' },
+  '1st Choice Home Health': { phone: '16508223398', contact: 'Amir' },
+  'Caring Hands': { phone: '17075904224', contact: 'Shivani' },
+  'Guardian Home Healthcare': { phone: '14088763786', contact: 'Asad' },
+  'Premier Home Health': { phone: '17075904224', contact: 'Shivani' },
+};
+
+function buildSmsBody(agencyName, invoices) {
+  const totalOpen = invoices.reduce((s, r) => s + r.open, 0);
+  const maxDays = agencyMaxDays(invoices);
+  const info = AGENCY_PHONES[agencyName] || {};
+  const greeting = info.contact ? `Hi ${info.contact},` : `Hi,`;
+  const invoiceLines = invoices.map(r => `  #${r.num}: $${r.open.toLocaleString()} open (${daysOverdue(r.due)}d overdue)`).join('\n');
+  if (maxDays >= 60) return `${greeting} This is Christine from Independence Health Contractors. We have outstanding invoices totaling $${totalOpen.toLocaleString()} that are 60+ days past due:\n${invoiceLines}\n\nEffective immediately we are suspending new patient referrals until this balance is resolved. Please contact us ASAP: AP@independencehealthc.com or (513) 532-9819. — Independence Health`;
+  if (maxDays >= 50) return `${greeting} This is Christine from Independence Health. Final notice — $${totalOpen.toLocaleString()} outstanding:\n${invoiceLines}\n\nIf not resolved within 10 business days we will suspend new patient referrals. Please reach us at AP@independencehealthc.com or (513) 532-9819. — Independence Health`;
+  if (maxDays >= 40) return `${greeting} This is Christine from Independence Health. Urgent follow-up — $${totalOpen.toLocaleString()} outstanding:\n${invoiceLines}\n\nPlease respond within 10 business days or these unpaid invoices are nearing the deadline for our Contracting Partnership to pause accepting visits for your agency. AP@independencehealthc.com | (513) 532-9819 — Independence Health`;
+  if (maxDays >= 30) return `${greeting} This is Christine from Independence Health. Following up on outstanding invoices totaling $${totalOpen.toLocaleString()}:\n${invoiceLines}\n\nPlease note: balances over 30 days may trigger a pause on new patient referrals. Please confirm receipt and ETA for payment. AP@independencehealthc.com | (513) 532-9819`;
+  return `${greeting} This is Christine from Independence Health. Friendly reminder — $${totalOpen.toLocaleString()} outstanding:\n${invoiceLines}\n\nPlease let us know if you have any questions. AP@independencehealthc.com | (513) 532-9819`;
+}
+
+function openSms(agencyName, invoices) {
+  const info = AGENCY_PHONES[agencyName] || {};
+  if (!info.phone) { showToast('No phone number on file — update in directory', 'var(--gold)'); return; }
+  const body = encodeURIComponent(buildSmsBody(agencyName, invoices));
+  window.location.href = `sms:${info.phone}&body=${body}`;
+}
+
+function copyTextMsg(agencyName, invoices, btn) {
+  const body = buildSmsBody(agencyName, invoices);
+  navigator.clipboard.writeText(body).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = '✓ Copied'; btn.classList.add('sent');
+    showToast(`Text for ${agencyName} copied to clipboard ✓`);
+    setTimeout(() => { btn.textContent = orig; btn.classList.remove('sent'); }, 3000);
+  }).catch(() => { showToast('Copy failed — try again', 'var(--rust)'); });
+}
+
+function renderAgencyView() {
+  const agencyMap = groupByAgency(DATA.filter(r => r.open > 0));
+  const agencies = Object.entries(agencyMap).sort((a, b) => {
+    const da = agencyMaxDays(a[1]), db = agencyMaxDays(b[1]);
+    return db - da || b[1].reduce((s,r)=>s+r.open,0) - a[1].reduce((s,r)=>s+r.open,0);
+  });
+  const totalAgencies = agencies.length;
+  const overdueAgencies = agencies.filter(([,invs]) => agencyMaxDays(invs) >= 30).length;
+  document.getElementById('agency-meta').textContent = `${totalAgencies} agencies with open balances · ${overdueAgencies} with 30+ day invoices`;
+  const batchBtn = document.getElementById('btn-batch-agency');
+  batchBtn.textContent = `→ Draft All ${overdueAgencies} Overdue Agency Emails to AP@ Drafts`;
+  const tbody = document.getElementById('agency-tbody');
+  tbody.innerHTML = '';
+  agencies.forEach(([agencyName, invoices], idx) => {
+    const totalOpen = invoices.reduce((s,r) => s+r.open, 0);
+    const maxDays = agencyMaxDays(invoices);
+    const openCount = invoices.length;
+    const agRow = document.createElement('tr');
+    agRow.className = 'agency-row';
+    agRow.onclick = () => toggleAgency(idx);
+    const info = AGENCY_PHONES[agencyName] || {};
+    const hasPhone = !!info.phone;
+    const safeAgency = agencyName.replace(/'/g, "\\'");
+    const invoicesJson = JSON.stringify(invoices).replace(/"/g, '&quot;');
+    agRow.innerHTML = `<td><span class="expand-icon" id="expand-${idx}">▶</span></td><td class="name-col">${agencyName}${info.contact ? '<br><span style="font-weight:400;font-size:11px;color:#8a8174;font-family:var(--sans)">' + info.contact + '</span>' : ''}</td><td style="text-align:right;font-family:var(--sans)">${openCount} invoice${openCount !== 1 ? 's' : ''}</td><td class="num-col" style="color:var(--rust)">${fmt(totalOpen)}</td><td>${daysBadge(maxDays)}</td><td><button class="btn-draft" id="draft-agency-${idx}" onclick="event.stopPropagation();draftAgency(this,'${safeAgency}')">→ Draft Email</button></td><td><button class="btn-draft" style="background:var(--teal-deep)" onclick="event.stopPropagation();openSms('${safeAgency}',${invoicesJson})" ${hasPhone ? '' : 'disabled title="No phone on file"'}>💬 Text</button></td><td><button class="btn-draft" style="background:#5a6e6b" onclick="event.stopPropagation();copyTextMsg('${safeAgency}',${invoicesJson},this)">⎘ Copy Text</button></td>`;
+    tbody.appendChild(agRow);
+    invoices.forEach(r => {
+      const days = daysOverdue(r.due);
+      const subRow = document.createElement('tr');
+      subRow.className = 'sub-row';
+      subRow.id = `sub-${idx}-${r.num}`;
+      subRow.innerHTML = `<td></td><td>Invoice #${r.num}</td><td style="font-family:var(--sans)">Due: ${r.due}</td><td style="text-align:right;font-family:var(--sans)">Billed: ${fmt(r.amount)}</td><td style="text-align:right;font-family:var(--sans);color:var(--rust);font-weight:600">Open: ${fmt(r.open)}</td><td>${days > 0 ? daysBadge(days) : '<span style="font-family:var(--sans);font-size:11px;color:#9a9182">Current</span>'}</td>`;
+      tbody.appendChild(subRow);
+    });
+  });
+}
+
+function toggleAgency(idx) {
+  const icon = document.getElementById('expand-' + idx);
+  const isOpen = icon.classList.contains('open');
+  icon.classList.toggle('open', !isOpen);
+  document.querySelectorAll(`[id^="sub-${idx}-"]`).forEach(row => { row.classList.toggle('visible', !isOpen); });
+}
+
+let logSessionType = 'email';
+let logPayments = [];
+let logChecked = {};
+
+function setSessionType(btn) {
+  document.querySelectorAll('.log-session-bar .pill').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  logSessionType = btn.dataset.session;
+  const textCol = document.getElementById('th-text-col');
+  if (textCol) textCol.style.display = logSessionType === 'text' ? '' : 'none';
+  renderLogChecklist();
+}
+
+function renderLogChecklist() {
+  const agencyMap = groupByAgency(DATA.filter(r => r.open > 0));
+  const agencies = Object.entries(agencyMap).sort((a,b) => agencyMaxDays(b[1]) - agencyMaxDays(a[1]) || b[1].reduce((s,r)=>s+r.open,0) - a[1].reduce((s,r)=>s+r.open,0));
+  const today = new Date();
+  const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  document.getElementById('log-date-display').textContent = days[today.getDay()] + ', ' + today.toLocaleDateString('en-US', {month:'long',day:'numeric',year:'numeric'});
+  document.getElementById('log-meta').textContent = agencies.length + ' agencies with open balances';
+  const showText = logSessionType === 'text';
+  const textCol = document.getElementById('th-text-col');
+  if (textCol) textCol.style.display = showText ? '' : 'none';
+  const tbody = document.getElementById('log-tbody');
+  tbody.innerHTML = '';
+  agencies.forEach(([name, invoices]) => {
+    const totalOpen = invoices.reduce((s,r)=>s+r.open,0);
+    const maxDays = agencyMaxDays(invoices);
+    const info = AGENCY_PHONES[name] || {};
+    const state = logChecked[name] || { emailed: false, texted: false, note: '' };
+    const tr = document.createElement('tr');
+    tr.style.background = state.emailed ? 'rgba(47,110,98,.06)' : '';
+    tr.innerHTML = `<td style="text-align:center"><input type="checkbox" class="log-check" ${state.emailed ? 'checked' : ''} onchange="logToggle('${name.replace(/'/g,"\\'")}','emailed',this.checked)"></td><td style="text-align:center;display:${showText ? 'table-cell' : 'none'}"><input type="checkbox" class="log-check" ${state.texted ? 'checked' : ''} onchange="logToggle('${name.replace(/'/g,"\\'")}','texted',this.checked)" ${!info.phone ? 'disabled title="No phone on file"' : ''}></td><td style="font-weight:600;font-size:13px">${name}</td><td style="font-family:var(--sans);font-size:12px;color:#6b6357">${info.contact || '—'}</td><td style="text-align:right;font-weight:600;color:var(--rust);font-variant-numeric:tabular-nums">${fmt(totalOpen)}</td><td>${daysBadge(maxDays)}</td><td><input class="log-note" type="text" value="${(state.note||'').replace(/"/g,'&quot;')}" placeholder="Response, promise, dispute…" onchange="logNote('${name.replace(/'/g,"\\'")}',this.value)"></td>`;
+    tbody.appendChild(tr);
+  });
+  updateLogCounts();
+}
+
+function logToggle(name, field, val) {
+  if (!logChecked[name]) logChecked[name] = { emailed: false, texted: false, note: '' };
+  logChecked[name][field] = val;
+  updateLogCounts();
+  const tbody = document.getElementById('log-tbody');
+  Array.from(tbody.rows).forEach(tr => {
+    const nameTd = tr.cells[2];
+    if (nameTd && nameTd.textContent === name) tr.style.background = logChecked[name].emailed ? 'rgba(47,110,98,.06)' : '';
+  });
+}
+
+function logNote(name, val) {
+  if (!logChecked[name]) logChecked[name] = { emailed: false, texted: false, note: '' };
+  logChecked[name].note = val;
+}
+
+function updateLogCounts() {
+  document.getElementById('log-emailed-count').textContent = Object.values(logChecked).filter(v => v.emailed).length;
+  document.getElementById('log-texted-count').textContent = Object.values(logChecked).filter(v => v.texted).length;
+}
+
+function addPayment() {
+  const agency = document.getElementById('log-payment-agency').value.trim();
+  const amount = parseFloat(document.getElementById('log-payment-amount').value);
+  if (!agency || !amount) { showToast('Enter agency name and amount', 'var(--gold)'); return; }
+  logPayments.push({ agency, amount });
+  document.getElementById('log-payment-agency').value = '';
+  document.getElementById('log-payment-amount').value = '';
+  renderPaymentTags();
+}
+
+function removePayment(idx) { logPayments.splice(idx, 1); renderPaymentTags(); }
+
+function renderPaymentTags() {
+  const el = document.getElementById('log-payments-list');
+  el.innerHTML = '';
+  logPayments.forEach((p, i) => {
+    const span = document.createElement('span');
+    span.className = 'payment-tag';
+    span.innerHTML = `${p.agency}: ${fmt(p.amount)} <button onclick="removePayment(${i})" title="Remove">×</button>`;
+    el.appendChild(span);
+  });
+}
+
+function buildLogReport() {
+  const today = new Date().toLocaleDateString('en-US', {weekday:'long',month:'long',day:'numeric',year:'numeric'});
+  const totalOpen = DATA.reduce((s,r)=>s+r.open, 0);
+  const sessionLabel = logSessionType === 'text' ? 'Email + Text (Friday)' : 'Email Follow-Up';
+  const emailed = Object.entries(logChecked).filter(([,v])=>v.emailed).map(([name,v])=>{
+    const invoices = DATA.filter(r=>r.name===name && r.open>0);
+    const open = invoices.reduce((s,r)=>s+r.open,0);
+    const days = agencyMaxDays(invoices);
+    const tier = days>=60?'60+ DAY SUSPENSION':days>=50?'50-day final warning':days>=40?'40-day urgent':days>=30?'30-day notice':'<30 days';
+    return `  • ${name} — ${fmt(open)} open — ${tier}${v.note ? '\n    Note: ' + v.note : ''}`;
+  }).join('\n');
+  const texted = logSessionType === 'text' ? Object.entries(logChecked).filter(([,v])=>v.texted).map(([name])=>`  • ${name}`).join('\n') : null;
+  const payments = logPayments.length ? logPayments.map(p=>`  • ${p.agency}: ${fmt(p.amount)}`).join('\n') : '  None reported';
+  const paymentsTotal = logPayments.reduce((s,p)=>s+p.amount,0);
+  const flags = document.getElementById('log-flags').value.trim() || 'None';
+  const noResponse = Object.entries(logChecked).filter(([,v])=>v.emailed && !v.note).map(([name])=>name);
+  return `AR Collections Activity Report\n${sessionLabel} — ${today}\nSubmitted by: Christine\n════════════════════════════════════════\n\nTOTAL OUTSTANDING BALANCE: ${fmt(totalOpen)}\n\n────────────────────────────────────────\nEMAILS SENT (${Object.values(logChecked).filter(v=>v.emailed).length} agencies)\n────────────────────────────────────────\n${emailed || '  None recorded this session'}\n\n${texted !== null ? `────────────────────────────────────────\nTEXTS SENT (${Object.values(logChecked).filter(v=>v.texted).length} agencies)\n────────────────────────────────────────\n${texted || '  None recorded this session'}\n\n` : ''}────────────────────────────────────────\nPAYMENTS RECEIVED${logPayments.length ? ' — Total: ' + fmt(paymentsTotal) : ''}\n────────────────────────────────────────\n${payments}\n\n────────────────────────────────────────\nFLAGS FOR JOE'S ATTENTION\n────────────────────────────────────────\n${flags}\n\n────────────────────────────────────────\nNO RESPONSE (emailed, no note logged)\n────────────────────────────────────────\n${noResponse.length ? noResponse.map(n=>'  • '+n).join('\n') : '  None — all agencies have notes'}\n\n════════════════════════════════════════\nIndependence Health Contractors\nAP@independencehealthc.com | (513) 532-9819`;
+}
+
+async function sendLogToJoe() {
+  if (!gmailToken) { connectGmail(); return; }
+  const report = buildLogReport();
+  const today = new Date().toLocaleDateString('en-US', {month:'long',day:'numeric',year:'numeric'});
+  const subject = `AR Collections Report — Christine — ${today}`;
+  const raw = [`From: AP@independencehealthc.com`, `To: ihc.cfo@gmail.com`, `Subject: ${subject}`, `Content-Type: text/plain; charset=utf-8`, ``, report].join('\r\n');
+  const encoded = btoa(unescape(encodeURIComponent(raw))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  const btn = document.getElementById('btn-send-joe');
+  btn.disabled = true; btn.textContent = '…';
+  const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/drafts', { method: 'POST', headers: { Authorization: 'Bearer ' + gmailToken, 'Content-Type': 'application/json' }, body: JSON.stringify({ message: { raw: encoded } }) });
+  btn.disabled = false; btn.textContent = '→ Email Report to Joe';
+  if (res.ok) { document.getElementById('log-send-status').textContent = '✓ Report drafted in AP@ Gmail — review and send to Joe'; showToast('Report drafted in AP@ Gmail ✓'); saveLogToHistory(report); }
+  else { showToast('Failed — check Gmail connection', 'var(--rust)'); }
+}
+
+function copyLogToClipboard() {
+  const report = buildLogReport();
+  navigator.clipboard.writeText(report).then(() => { document.getElementById('log-send-status').textContent = '✓ Copied to clipboard'; showToast('Report copied to clipboard ✓'); saveLogToHistory(report); }).catch(() => showToast('Copy failed', 'var(--rust)'));
+}
+
+function saveLogToHistory(report) {
+  const key = 'ihc_log_history';
+  const existing = JSON.parse(localStorage.getItem(key) || '[]');
+  existing.unshift({ date: new Date().toLocaleString(), report });
+  localStorage.setItem(key, JSON.stringify(existing.slice(0, 20)));
+  renderLogHistory();
+}
+
+function renderLogHistory() {
+  const entries = JSON.parse(localStorage.getItem('ihc_log_history') || '[]');
+  const el = document.getElementById('log-history-list');
+  if (!entries.length) { el.innerHTML = '<div style="color:#9a9182;font-size:12px;font-family:var(--sans)">No past sessions saved yet.</div>'; return; }
+  el.innerHTML = '';
+  entries.forEach(e => {
+    const div = document.createElement('div');
+    div.className = 'log-history-entry';
+    div.innerHTML = `<div class="log-history-date">${e.date}</div><details><summary style="cursor:pointer;font-size:12px;color:var(--teal);font-family:var(--sans)">View report</summary><div class="log-history-body">${e.report.replace(/</g,'&lt;')}</div></details>`;
+    el.appendChild(div);
+  });
+}
+
+function clearLog() {
+  if (!confirm('Clear this session? Logged actions will be lost.')) return;
+  logChecked = {}; logPayments = [];
+  document.getElementById('log-flags').value = '';
+  document.getElementById('log-send-status').textContent = '';
+  renderPaymentTags(); renderLogChecklist();
+  showToast('Session cleared');
+}
+
+function initLog() { renderLogChecklist(); renderLogHistory(); }
+
+let cfoType = 'monday';
+let cfoPayments = [];
+let cfoNotes = {};
+
+function setCfoType(btn) {
+  document.querySelectorAll('#tab-cfo .log-session-bar .pill').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  cfoType = btn.dataset.cfo;
+  document.getElementById('cfo-meta').textContent = 'For owner review — ' + (cfoType === 'monday' ? 'Monday' : 'Thursday');
+}
+
+function initCfoReport() {
+  const today = new Date();
+  const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  document.getElementById('cfo-date-display').textContent = days[today.getDay()] + ', ' + today.toLocaleDateString('en-US', {month:'long',day:'numeric',year:'numeric'});
+  document.getElementById('cfo-meta').textContent = 'For owner review — ' + (cfoType === 'monday' ? 'Monday' : 'Thursday');
+  const totalOpen = DATA.reduce((s,r)=>s+r.open,0);
+  const agenciesOpen = Object.keys(groupByAgency(DATA.filter(r=>r.open>0))).length;
+  const sixtyPlus = Object.entries(groupByAgency(DATA.filter(r=>r.open>0))).filter(([,invs])=>agencyMaxDays(invs)>=60).length;
+  const paidCount = DATA.filter(r=>r.open<=0).length;
+  document.getElementById('cfo-total-open').textContent = fmtShort(totalOpen);
+  document.getElementById('cfo-agency-count').textContent = agenciesOpen;
+  document.getElementById('cfo-sixty-count').textContent = sixtyPlus;
+  document.getElementById('cfo-paid-count').textContent = paidCount + ' / ' + DATA.length;
+  const agencyMap = groupByAgency(DATA.filter(r=>r.open>0));
+  const agencies = Object.entries(agencyMap).sort((a,b)=>agencyMaxDays(b[1])-agencyMaxDays(a[1]));
+  const tbody = document.getElementById('cfo-agency-tbody');
+  tbody.innerHTML = '';
+  agencies.forEach(([name, invoices]) => {
+    const totalAgOpen = invoices.reduce((s,r)=>s+r.open,0);
+    const maxDays = agencyMaxDays(invoices);
+    const note = cfoNotes[name] || '';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td style="font-weight:600;font-size:13px">${name}</td><td style="text-align:right;color:var(--rust);font-weight:600;font-variant-numeric:tabular-nums">${fmt(totalAgOpen)}</td><td>${daysBadge(maxDays)}</td><td><input class="log-note" type="text" value="${note.replace(/"/g,'&quot;')}" placeholder="Status, promise, dispute…" onchange="cfoNotes['${name.replace(/'/g,"\\'")}'] = this.value"></td>`;
+    tbody.appendChild(tr);
+  });
+  renderCfoHistory();
+}
+
+function addCfoPayment() {
+  const agency = document.getElementById('cfo-collected-agency').value.trim();
+  const amount = parseFloat(document.getElementById('cfo-collected-amount').value);
+  if (!agency || !amount) { showToast('Enter agency and amount', 'var(--gold)'); return; }
+  cfoPayments.push({ agency, amount });
+  document.getElementById('cfo-collected-agency').value = '';
+  document.getElementById('cfo-collected-amount').value = '';
+  renderCfoPayments();
+}
+
+function removeCfoPayment(idx) { cfoPayments.splice(idx,1); renderCfoPayments(); }
+
+function renderCfoPayments() {
+  const el = document.getElementById('cfo-payments-list');
+  el.innerHTML = '';
+  cfoPayments.forEach((p,i) => {
+    const span = document.createElement('span');
+    span.className = 'payment-tag';
+    span.innerHTML = `${p.agency}: ${fmt(p.amount)} <button onclick="removeCfoPayment(${i})">×</button>`;
+    el.appendChild(span);
+  });
+  document.getElementById('cfo-collected-total').textContent = fmt(cfoPayments.reduce((s,p)=>s+p.amount,0));
+}
+
+function buildCfoReport() {
+  const today = new Date().toLocaleDateString('en-US', {weekday:'long',month:'long',day:'numeric',year:'numeric'});
+  const type = cfoType === 'monday' ? 'Monday' : 'Thursday';
+  const totalOpen = DATA.reduce((s,r)=>s+r.open,0);
+  const collectedTotal = cfoPayments.reduce((s,p)=>s+p.amount,0);
+  const agencyMap = groupByAgency(DATA.filter(r=>r.open>0));
+  const agencyLines = Object.entries(agencyMap).sort((a,b)=>agencyMaxDays(b[1])-agencyMaxDays(a[1])).map(([name,invs]) => {
+    const open = invs.reduce((s,r)=>s+r.open,0);
+    const d = agencyMaxDays(invs);
+    const tier = d>=60?'60+ DAYS — SUSPENSION':d>=50?'50 days — Final warning':d>=40?'40 days — Urgent':d>=30?'30 days — Notice':'<30 days';
+    const note = cfoNotes[name] ? '\n      Status: ' + cfoNotes[name] : '';
+    return `  • ${name} — ${fmt(open)} — ${tier}${note}`;
+  }).join('\n');
+  const collectedLines = cfoPayments.length ? cfoPayments.map(p=>`  • ${p.agency}: ${fmt(p.amount)}`).join('\n') + `\n\n  TOTAL COLLECTED THIS PERIOD: ${fmt(collectedTotal)}` : '  None reported this period';
+  return `╔══════════════════════════════════════════════════════╗\n  INDEPENDENCE HEALTH CONTRACTORS\n  CFO REPORT — ${type.toUpperCase()} — ${today}\n  Prepared by: Joe [Last Name], CFO\n  For: Owner Review\n╚══════════════════════════════════════════════════════╝\n\nDASHBOARD SNAPSHOT\n  Total outstanding: ${fmt(totalOpen)}\n  Agencies with open invoices: ${Object.keys(agencyMap).length}\n  Agencies at 60+ days (suspension tier): ${Object.entries(agencyMap).filter(([,i])=>agencyMaxDays(i)>=60).length}\n\n════════════════════════════════════════════════════════\n1. COLLECTIONS SINCE LAST REPORT\n════════════════════════════════════════════════════════\n${collectedLines}\n\n════════════════════════════════════════════════════════\n2. OUTSTANDING BALANCE BY AGENCY\n════════════════════════════════════════════════════════\n${agencyLines}\n\n════════════════════════════════════════════════════════\n3. AP ACTIVITY SUMMARY (CHRISTINE)\n════════════════════════════════════════════════════════\n${document.getElementById('cfo-ap-summary').value.trim() || 'No summary entered'}\n\n════════════════════════════════════════════════════════\n4. ESCALATION DECISIONS & STATUS CHANGES\n════════════════════════════════════════════════════════\n${document.getElementById('cfo-escalation').value.trim() || 'No escalation updates'}\n\n════════════════════════════════════════════════════════\n5. FLAGS & NOTES FOR OWNER\n════════════════════════════════════════════════════════\n${document.getElementById('cfo-flags').value.trim() || 'None'}\n\n════════════════════════════════════════════════════════\n6. ACTION PLAN — NEXT 3–4 DAYS\n════════════════════════════════════════════════════════\n${document.getElementById('cfo-action-plan').value.trim() || 'No action plan entered'}\n\n════════════════════════════════════════════════════════\nIndependence Health Contractors\nJoe [Last Name], CFO — ihc.cfo@gmail.com\nAP: Christine — AP@independencehealthc.com | (513) 532-9819`;
+}
+
+function copyCfoReport() {
+  const report = buildCfoReport();
+  navigator.clipboard.writeText(report).then(() => { document.getElementById('cfo-status').textContent = '✓ Copied — paste into email or text to owner'; showToast('CFO report copied to clipboard ✓'); saveCfoHistory(report); }).catch(() => showToast('Copy failed', 'var(--rust)'));
+}
+
+function downloadCfoPdf() {
+  const report = buildCfoReport();
+  const today = new Date().toLocaleDateString('en-US', {month:'2-digit',day:'2-digit',year:'numeric'}).replace(/\//g,'-');
+  const type = cfoType === 'monday' ? 'Monday' : 'Thursday';
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>CFO Report ${type} ${today}</title><style>body{font-family:'Helvetica Neue',Arial,sans-serif;font-size:13px;color:#1c2b2d;max-width:760px;margin:40px auto;padding:0 24px;line-height:1.7}h1{font-size:20px;font-weight:600;margin-bottom:4px}.eyebrow{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#2f6e62;font-weight:700;margin-bottom:6px}.meta{font-size:12px;color:#6b6357;margin-bottom:24px}pre{white-space:pre-wrap;font-family:inherit;font-size:12px;background:#f6f3ec;padding:14px;border:1px solid #d8d0bd}.footer{margin-top:28px;padding-top:12px;border-top:1px solid #d8d0bd;font-size:11px;color:#8a8174}@media print{body{margin:20px}}</style></head><body><div class="eyebrow">Independence Health Contractors</div><h1>CFO Report — ${type}, ${today}</h1><div class="meta">Prepared by: Joe [Last Name], CFO &nbsp;·&nbsp; For: Owner Review</div><pre>${report.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre><div class="footer">Independence Health Contractors &nbsp;·&nbsp; ihc.cfo@gmail.com &nbsp;·&nbsp; AP@independencehealthc.com | (513) 532-9819</div></body></html>`;
+  const blob = new Blob([html], {type:'text/html'});
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, '_blank');
+  if (win) { setTimeout(() => win.print(), 800); }
+  document.getElementById('cfo-status').textContent = '✓ Print dialog opened — choose Save as PDF';
+  saveCfoHistory(report);
+}
+
+function saveCfoHistory(report) {
+  const key = 'ihc_cfo_history';
+  const existing = JSON.parse(localStorage.getItem(key) || '[]');
+  existing.unshift({ date: new Date().toLocaleString(), type: cfoType, report });
+  localStorage.setItem(key, JSON.stringify(existing.slice(0,10)));
+  renderCfoHistory();
+}
+
+function renderCfoHistory() {
+  const entries = JSON.parse(localStorage.getItem('ihc_cfo_history') || '[]');
+  const el = document.getElementById('cfo-history-list');
+  if (!entries.length) { el.innerHTML = '<div style="color:#9a9182;font-size:12px">No past reports saved yet.</div>'; return; }
+  el.innerHTML = '';
+  entries.forEach(e => {
+    const div = document.createElement('div');
+    div.className = 'log-history-entry';
+    div.innerHTML = `<div class="log-history-date">${e.type==='monday'?'Monday':'Thursday'} Report — ${e.date}</div><details><summary style="cursor:pointer;font-size:12px;color:var(--teal)">View report</summary><div class="log-history-body">${e.report.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</div></details>`;
+    el.appendChild(div);
+  });
+}
+
+function clearCfoReport() {
+  if (!confirm('Clear this CFO report?')) return;
+  cfoPayments = []; cfoNotes = {};
+  ['cfo-ap-summary','cfo-escalation','cfo-flags','cfo-action-plan'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('cfo-status').textContent = '';
+  renderCfoPayments(); initCfoReport();
+  showToast('CFO report cleared');
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  document.querySelectorAll('.nav-tab').forEach(b => {
+    const t = b.textContent.trim().toLowerCase().replace(/\s/g,'');
+    if (name === 'dashboard' && (t === 'invoices' || t === 'dashboard')) b.classList.add('active');
+    else if (name === 'agency' && t === 'byagency') b.classList.add('active');
+    else if (name === 'log' && t === 'activitylog') b.classList.add('active');
+    else if (name === 'cfo' && t === 'cforeport') b.classList.add('active');
+    else if (name === 'upload' && t === 'upload') b.classList.add('active');
+    else if (name === 'ask-ai' && t === 'askai') b.classList.add('active');
+    else if (name === 'history' && t === 'history') b.classList.add('active');
+    else if (name === 'disputes' && t === 'disputes') b.classList.add('active');
+  });
+  if (name === 'dashboard') renderDashboard();
+  if (name === 'agency') renderAgencyView();
+  if (name === 'log') initLog();
+  if (name === 'cfo') initCfoReport();
+  if (name === 'history') renderHistory();
+  if (name === 'ask-ai') initChat();
+  if (name === 'disputes') initDisputeTab();
+}
+
+function initDropdowns() {
+  const cSel = document.getElementById('contractor-sel');
+  const mSel = document.getElementById('month-sel');
+  cSel.innerHTML = '<option value="">All contractors</option>';
+  mSel.innerHTML = '<option value="">All months</option>';
+  [...new Set(DATA.map(r => r.name))].sort().forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; cSel.appendChild(o); });
+  [...new Set(DATA.map(r => monthKey(r.date)))].sort().forEach(mk => { const o = document.createElement('option'); o.value = mk; o.textContent = monthLabel(mk); mSel.appendChild(o); });
+}
+
+function getFiltered() {
+  const q = document.getElementById('search-input').value.trim().toLowerCase();
+  const c = document.getElementById('contractor-sel').value;
+  const mk = document.getElementById('month-sel').value;
+  let rows = DATA.filter(r => {
+    if (c && r.name !== c) return false;
+    if (mk && monthKey(r.date) !== mk) return false;
+    if (statusFilter && rowStatus(r) !== statusFilter) return false;
+    if (q && !(r.name + ' ' + r.num).toLowerCase().includes(q)) return false;
+    return true;
+  });
+  rows.sort((a, b) => {
+    let av = a[sortKey], bv = b[sortKey];
+    if (sortKey === 'date' || sortKey === 'due') { av = toDate(av); bv = toDate(bv); }
+    else if (sortKey === 'num') { av = +av; bv = +bv; }
+    else if (typeof av === 'string') { av = av.toLowerCase(); bv = bv.toLowerCase(); }
+    return av < bv ? -sortDir : av > bv ? sortDir : 0;
+  });
+  return rows;
+}
+
+function renderDashboard() {
+  const rows = getFiltered();
+  const allAmt = DATA.reduce((s, r) => s + r.amount, 0);
+  const totalAmt = rows.reduce((s, r) => s + r.amount, 0);
+  const totalOpen = rows.reduce((s, r) => s + r.open, 0);
+  const paidCount = rows.filter(r => rowStatus(r) === 'paid').length;
+  const overdueCount = DATA.filter(r => r.open > 0 && daysOverdue(r.due) >= 30).length;
+  document.getElementById('dash-meta').textContent = DATA.length + ' invoices · Feb – Jun 2026';
+  document.getElementById('sum-count').textContent = rows.length;
+  document.getElementById('sum-billed').textContent = fmtShort(totalAmt);
+  document.getElementById('sum-open').textContent = fmtShort(totalOpen);
+  document.getElementById('sum-paid').textContent = paidCount + ' / ' + rows.length;
+  document.getElementById('bar-billed').style.width = (allAmt ? Math.min(100, totalAmt/allAmt*100) : 0) + '%';
+  document.getElementById('bar-open').style.width = (totalAmt ? Math.min(100, totalOpen/totalAmt*100) : 0) + '%';
+  document.getElementById('foot-amount').textContent = fmt(totalAmt);
+  document.getElementById('foot-open').textContent = fmt(totalOpen);
+  document.getElementById('result-count').textContent = 'Showing ' + rows.length + ' of ' + DATA.length + ' invoices';
+  const batchBtn = document.getElementById('btn-batch-all');
+  batchBtn.textContent = `→ Draft All ${overdueCount} Overdue Emails to AP@ Drafts`;
+  ['date','num','name','due','amount','open'].forEach(k => { const el = document.getElementById('arrow-' + k); if (el) el.textContent = sortKey === k ? (sortDir === 1 ? ' ▲' : ' ▼') : ''; });
+  document.querySelectorAll('thead th').forEach(th => { th.classList.toggle('active-sort', th.getAttribute('onclick') && th.getAttribute('onclick').includes("'" + sortKey + "'")); });
+  const tbody = document.getElementById('table-body');
+  tbody.innerHTML = '';
+  if (rows.length === 0) { tbody.innerHTML = '<tr class="no-results"><td colspan="8">No invoices match these filters.</td></tr>'; return; }
+  rows.forEach(r => {
+    const st = rowStatus(r);
+    const days = daysOverdue(r.due);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${r.date}</td><td>${r.num}</td><td class="name-col">${r.name}</td><td>${r.due}</td><td class="num-col">${fmt(r.amount)}</td><td class="num-col">${fmt(r.open)}</td><td><span class="badge ${st}">${st}</span></td><td>${days > 0 ? daysBadge(days) : '<span style="font-family:var(--sans);font-size:11px;color:#9a9182">—</span>'}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function sortBy(key) { if (sortKey === key) sortDir *= -1; else { sortKey = key; sortDir = 1; } renderDashboard(); }
+function setStatus(btn) { document.querySelectorAll('#status-pills .pill').forEach(b => b.classList.remove('active')); btn.classList.add('active'); statusFilter = btn.dataset.status; renderDashboard(); }
+function resetFilters() {
+  document.getElementById('search-input').value = '';
+  document.getElementById('contractor-sel').value = '';
+  document.getElementById('month-sel').value = '';
+  statusFilter = ''; sortKey = 'date'; sortDir = 1;
+  document.querySelectorAll('#status-pills .pill').forEach(b => b.classList.toggle('active', b.dataset.status === ''));
+  renderDashboard();
+}
+
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  let hi = lines.findIndex(l => l.toLowerCase().includes('date') && l.toLowerCase().includes('amount'));
+  if (hi < 0) hi = 0;
+  const parsed = [];
+  for (let i = hi + 1; i < lines.length; i++) {
+    const cols = lines[i].match(/(\".*?\"|[^,]+)(?=,|$)/g)?.map(c => c.replace(/^\"|\"$/g, '').trim()) || [];
+    if (!cols[0] || cols[0] === 'TOTAL') continue;
+    const amt = parseAmt(cols[6]), opn = parseAmt(cols[7]);
+    if (!amt) continue;
+    parsed.push({ date: cols[0], num: cols[2] || '', name: cols[3] || '', due: cols[5] || cols[0], amount: amt, open: opn });
+  }
+  return parsed;
+}
+function handleDrop(e) { e.preventDefault(); document.getElementById('dropzone').classList.remove('drag-over'); processFile(e.dataTransfer.files[0]); }
+function handleFileInput(input) { processFile(input.files[0]); }
+function processFile(file) {
+  if (!file) return;
+  pendingFilename = file.name;
+  const reader = new FileReader();
+  reader.onload = e => {
+    pendingRows = parseCSV(e.target.result);
+    document.getElementById('preview-ok').textContent = '✓ Parsed ' + pendingRows.length + ' invoices from ' + pendingFilename;
+    const pb = document.getElementById('preview-body');
+    pb.innerHTML = '';
+    pendingRows.slice(0, 8).forEach(r => { const tr = document.createElement('tr'); tr.innerHTML = `<td>${r.date}</td><td>${r.num}</td><td class="name-col">${r.name}</td><td class="num-col">${fmt(r.amount)}</td><td class="num-col">${fmt(r.open)}</td>`; pb.appendChild(tr); });
+    if (pendingRows.length > 8) { const tr = document.createElement('tr'); tr.innerHTML = `<td colspan="5" style="color:#9a9182;font-style:italic;font-size:12px;font-family:var(--sans)">…and ${pendingRows.length - 8} more</td>`; pb.appendChild(tr); }
+    document.getElementById('upload-preview').style.display = 'block';
+  };
+  reader.readAsText(file);
+}
+function confirmUpload() {
+  if (!pendingRows) return;
+  let added = 0;
+  pendingRows.forEach(r => { if (!DATA.some(m => m.num === r.num && m.name === r.name)) { DATA.push(r); added++; } });
+  UPLOADS.unshift({ name: pendingFilename, date: new Date().toLocaleDateString(), count: pendingRows.length, added });
+  initDropdowns(); showToast(added + ' new invoices added ✓'); cancelUpload();
+}
+function cancelUpload() { pendingRows = null; pendingFilename = null; document.getElementById('upload-preview').style.display = 'none'; document.getElementById('file-input').value = ''; }
+
+function initChat() {
+  if (chatMessages.length === 0) {
+    chatMessages.push({ role: 'ai', text: 'Hi! I have access to all ' + DATA.length + ' invoices in this project. Ask me anything — which contractors have the highest open balances, payment trends, overdue analysis, or anything else.' });
+    renderChat();
+  }
+}
+function renderChat() {
+  const container = document.getElementById('chat-messages');
+  container.innerHTML = '';
+  chatMessages.forEach(m => { const div = document.createElement('div'); div.className = 'msg ' + (m.role === 'user' ? 'user' : 'ai'); div.textContent = m.text; container.appendChild(div); });
+  if (aiThinking) { const div = document.createElement('div'); div.className = 'msg thinking'; div.textContent = 'Analyzing ' + DATA.length + ' invoices…'; container.appendChild(div); }
+  container.scrollTop = container.scrollHeight;
+  document.getElementById('suggestions').style.display = chatMessages.length > 1 ? 'none' : 'flex';
+}
+function setAiInput(text) { document.getElementById('ai-input').value = text; document.getElementById('ai-input').focus(); }
+async function sendAI() {
+  const q = document.getElementById('ai-input').value.trim();
+  if (!q || aiThinking) return;
+  document.getElementById('ai-input').value = '';
+  chatMessages.push({ role: 'user', text: q });
+  aiThinking = true; renderChat();
+  document.getElementById('ai-send-btn').textContent = '…';
+  document.getElementById('ai-send-btn').disabled = true;
+  const byC = {};
+  DATA.forEach(r => { if (!byC[r.name]) byC[r.name] = { total: 0, open: 0, count: 0 }; byC[r.name].total += r.amount; byC[r.name].open += r.open; byC[r.name].count++; });
+  const summary = Object.entries(byC).map(([n,v]) => `${n}: ${v.count} invoices, billed $${v.total.toLocaleString()}, open $${v.open.toLocaleString()}`).join('\n');
+  const totalBilled = DATA.reduce((s,r) => s+r.amount, 0);
+  const totalOpen = DATA.reduce((s,r) => s+r.open, 0);
+  const systemPrompt = `You are a financial analyst for Independence Health Contractors, a home health staffing company. Invoice data Feb–Jun 2026.\n\nSTATS:\nTotal invoices: ${DATA.length}\nTotal billed: $${totalBilled.toLocaleString()}\nTotal open: $${totalOpen.toLocaleString()}\nContractors: ${[...new Set(DATA.map(r=>r.name))].length}\n\nPER-CONTRACTOR:\n${summary}\n\nFULL DATA:\n${JSON.stringify(DATA)}\n\nBe concise and direct. Use $ with commas. Line breaks for lists.`;
+  const apiMessages = chatMessages.filter((m, i) => m.role !== 'ai' || i === 0).slice(-8).map(m => ({ role: m.role === 'ai' ? 'assistant' : 'user', content: m.text }));
+  if (apiMessages[apiMessages.length - 1]?.content !== q) apiMessages.push({ role: 'user', content: q });
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1000, system: systemPrompt, messages: apiMessages }) });
+    const d = await res.json();
+    const text = d.content?.find(b => b.type === 'text')?.text || 'Sorry, no response received.';
+    chatMessages.push({ role: 'ai', text });
+  } catch (_) { chatMessages.push({ role: 'ai', text: 'Something went wrong. Please try again.' }); }
+  aiThinking = false;
+  document.getElementById('ai-send-btn').textContent = 'Ask';
+  document.getElementById('ai-send-btn').disabled = false;
+  renderChat();
+}
+
+function renderHistory() {
+  const totalBilled = DATA.reduce((s, r) => s + r.amount, 0);
+  const totalOpen = DATA.reduce((s, r) => s + r.open, 0);
+  const contractors = [...new Set(DATA.map(r => r.name))].length;
+  document.getElementById('hist-count').textContent = DATA.length;
+  document.getElementById('hist-contractors').textContent = contractors;
+  document.getElementById('hist-billed').textContent = fmt(totalBilled);
+  document.getElementById('hist-open').textContent = fmt(totalOpen);
+  const list = document.getElementById('upload-history-list');
+  list.innerHTML = '';
+  UPLOADS.forEach(u => {
+    const div = document.createElement('div');
+    div.className = 'upload-row-item';
+    div.innerHTML = `<div style="font-size:20px">&#128196;</div><div><div class="upload-row-name">${u.name}</div><div class="upload-row-meta">${u.date} · ${u.count} invoices${u.added != null ? ' · ' + u.added + ' new added' : ''}</div></div>`;
+    list.appendChild(div);
+  });
+}
+function resetProject() {
+  if (!confirm('Reset all data to the original seed? This cannot be undone.')) return;
+  DATA = JSON.parse(JSON.stringify(SEED));
+  UPLOADS = [{ name: 'Seed data restored', date: new Date().toLocaleDateString(), count: SEED.length }];
+  chatMessages = [];
+  initDropdowns(); renderHistory();
+  showToast('Project reset to seed data');
+}
+function syncData() { showToast('Data synced ✓'); }
+
+initDropdowns();
+renderDashboard();
+initGmailStatus();
+
+
+// ── DISPUTE QUEUE ─────────────────────────────────────────────────────────────
+let DISPUTES = {};
+try { DISPUTES = JSON.parse(localStorage.getItem('ihc_disputes') || '{}'); } catch(e) { DISPUTES = {}; }
+
+const DQ_ISSUE_TYPES = [
+  'Missing NMNOC / DC Instructions',
+  'Incomplete visit note / unsigned documentation',
+  'Missing EVV or paper signature',
+  'Missing Plan of Care / physician order',
+  'OASIS discrepancy',
+  'Billing code mismatch',
+  'Duplicate claim',
+  'Missing DC instructions',
+  'Clinician credential issue',
+  'Other / see notes'
+];
+
+function saveDisputes() {
+  try { localStorage.setItem('ihc_disputes', JSON.stringify(DISPUTES)); } catch(e) {}
+}
+
+function initDisputeAgencySelect() {
+  const sel = document.getElementById('dq-agency-sel');
+  if (!sel) return;
+  const current = sel.value;
+  sel.innerHTML = '<option value="">Select agency\u2026</option>';
+  // Use DATA if populated, otherwise fall back to SEED so the list is never empty
+  const source = (DATA && DATA.length > 0) ? DATA : SEED;
+  const fromData = [...new Set(source.map(r => r.name))].sort();
+  const fromDisputes = Object.keys(DISPUTES);
+  const all = [...new Set([...fromData, ...fromDisputes])].sort();
+  all.forEach(name => {
+    const o = document.createElement('option');
+    o.value = name; o.textContent = name;
+    if (name === current) o.selected = true;
+    sel.appendChild(o);
+  });
+}
+
+// ── DISPUTE IMAGE HANDLING ────────────────────────────────────────────────────
+let dqImageBase64 = null;
+let dqImageMediaType = null;
+
+function dqHandleImageDrop(e) {
+  e.preventDefault();
+  document.getElementById('dq-image-zone').classList.remove('dq-drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) dqLoadImage(file);
+}
+
+function dqHandleImageFile(input) {
+  const file = input.files[0];
+  if (file) dqLoadImage(file);
+}
+
+function dqLoadImage(file) {
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const dataUrl = ev.target.result;
+    // Compress via canvas before encoding — keeps payload manageable
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      // High-res preview version
+      const PREV_MAX = 1200;
+      let pw = img.width, ph = img.height;
+      if (pw > PREV_MAX || ph > PREV_MAX) {
+        if (pw > ph) { ph = Math.round(ph * PREV_MAX / pw); pw = PREV_MAX; }
+        else { pw = Math.round(pw * PREV_MAX / ph); ph = PREV_MAX; }
+      }
+      const previewCanvas = document.createElement('canvas');
+      previewCanvas.width = pw; previewCanvas.height = ph;
+      previewCanvas.getContext('2d').drawImage(img, 0, 0, pw, ph);
+      const previewUrl = previewCanvas.toDataURL('image/jpeg', 0.80);
+
+      // Small API version — must stay under CORS preflight threshold (~50KB body)
+      const API_MAX = 640;
+      let w = img.width, h = img.height;
+      if (w > API_MAX || h > API_MAX) {
+        if (w > h) { h = Math.round(h * API_MAX / w); w = API_MAX; }
+        else { w = Math.round(w * API_MAX / h); h = API_MAX; }
+      }
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      const compressed = canvas.toDataURL('image/jpeg', 0.60);
+      const parts = compressed.split(',');
+      dqImageBase64 = parts[1];
+      dqImageMediaType = 'image/jpeg';
+      const kb = Math.round(dqImageBase64.length * 0.75 / 1024);
+      document.getElementById('dq-image-preview').src = previewUrl;  // show high-res preview
+      document.getElementById('dq-image-preview-wrap').style.display = 'block';
+      document.getElementById('dq-image-prompt').style.display = 'none';
+      document.getElementById('dq-text-label').textContent = 'Add any extra notes (optional \u2014 image is ready to parse)';
+      document.getElementById('dq-parse-status').textContent = '\u2713 Image ready (' + w + '\u00d7' + h + ', ~' + kb + 'KB) \u2014 hit Parse with AI';
+      document.getElementById('dq-parse-status').style.color = 'var(--paid)';
+    };
+    img.src = dataUrl;
+  };
+  reader.readAsDataURL(file);
+}
+
+function dqClearImage() {
+  dqImageBase64 = null;
+  dqImageMediaType = null;
+  document.getElementById('dq-image-preview-wrap').style.display = 'none';
+  document.getElementById('dq-image-prompt').style.display = 'block';
+  document.getElementById('dq-image-input').value = '';
+  document.getElementById('dq-text-label').textContent = 'Or paste text / email / corrections below';
+  document.getElementById('dq-parse-status').textContent = '';
+}
+
+async function parseDisputeText() {
+  const agencySel = document.getElementById('dq-agency-sel');
+  const agency = agencySel ? agencySel.value : '';
+  const textEl = document.getElementById('dq-paste-input');
+  const text = textEl ? textEl.value.trim() : '';
+  const hasImage = !!dqImageBase64;
+  const hasText = !!text;
+
+  if (!agency) { showToast('Select an agency first', 'var(--gold)'); return; }
+  if (!hasImage && !hasText) { showToast('Upload a screenshot or paste some text first', 'var(--gold)'); return; }
+
+  const btn = document.getElementById('dq-parse-btn');
+  const status = document.getElementById('dq-parse-status');
+  btn.disabled = true;
+  btn.textContent = 'Parsing\u2026';
+  status.textContent = hasImage ? 'Claude Vision is reading the image\u2026' : 'Claude is reading the text\u2026';
+  status.style.color = 'var(--teal)';
+
+  const systemPrompt = `You are a medical billing dispute parser for Independence Health Contractors, a home health therapy contracting company.
+The user will provide an image (screenshot of a payroll report, email, or spreadsheet) and/or pasted text from an agency.
+Extract every individual line item, correction request, or dispute that needs to be resolved before payment can be made.
+Look for rows where payment is $0 or blank, where comments say things like "No Posted Visit", "No Consent Form", "No NOMNOC", "No EVV", "Pending", "Double entry", "Seen by other clinician", "Missed Visit", or any other reason a line is being disputed or withheld.
+Also extract any line that has a comment indicating a problem, discrepancy, or required correction.
+
+For each item return a JSON array of objects with these exact fields:
+- title: short description of the issue (max 80 chars, clear and actionable — include the core problem)
+- patient: patient name if visible, else empty string
+- visitDate: date of visit if visible (MM/DD/YYYY format), else empty string
+- clinician: clinician name if visible, else empty string
+- visitType: type of visit if visible (e.g. OT Eval, PTA Visit, OASIS DC, SOC, PT Eval, Recert, PT Discharge), else empty string
+- amount: dollar amount on the line as a number if visible, else 0
+- issueType: best match from: Missing NMNOC / DC Instructions | Incomplete visit note / unsigned documentation | Missing EVV or paper signature | Missing Plan of Care / physician order | OASIS discrepancy | Billing code mismatch | Duplicate claim | Missing DC instructions | Clinician credential issue | Other / see notes
+- rawText: brief description of what you saw on this line
+
+Return ONLY a valid JSON array. No markdown fences, no explanation, no preamble. If nothing parseable found, return [].`;
+
+  // Build message content — image + optional text
+  const userContent = [];
+  if (hasImage) {
+    userContent.push({
+      type: 'image',
+      source: { type: 'base64', media_type: dqImageMediaType, data: dqImageBase64 }
+    });
+  }
+  userContent.push({
+    type: 'text',
+    text: hasText ? text : (hasImage ? 'Please extract all dispute/correction line items from this image.' : text)
+  });
+
+  try {
+    // Log payload size for debugging
+    const payloadStr = JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 2000,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userContent }]
+    });
+    console.log('Dispute parse payload size:', Math.round(payloadStr.length/1024) + 'KB', 'hasImage:', hasImage);
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payloadStr
+    });
+    console.log('Response status:', res.status, res.statusText);
+    const d = await res.json();
+    console.log('Response body:', JSON.stringify(d).slice(0, 300));
+    // Surface API errors clearly
+    if (!res.ok || d.error) {
+      const errMsg = d.error?.message || d.error?.type || ('HTTP ' + res.status);
+      status.textContent = 'API error: ' + errMsg;
+      status.style.color = 'var(--rust)';
+      showToast('API error: ' + errMsg, 'var(--rust)');
+      console.error('Dispute parse API error:', d);
+      btn.disabled = false; btn.textContent = '\u2192 Parse with AI';
+      return;
+    }
+    let raw = d.content?.find(b => b.type === 'text')?.text || '[]';
+    raw = raw.trim().replace(/^```json\s*/,'').replace(/^```\s*/,'').replace(/\s*```$/,'');
+    let parsed;
+    try { parsed = JSON.parse(raw); } catch(e) {
+      const match = raw.match(/\[[\s\S]*\]/);
+      try { parsed = match ? JSON.parse(match[0]) : []; } catch(e2) { parsed = []; }
+    }
+
+    if (!Array.isArray(parsed) || !parsed.length) {
+      status.textContent = 'No items found \u2014 try a clearer image or add text notes';
+      status.style.color = 'var(--gold)';
+      btn.disabled = false; btn.textContent = '\u2192 Parse with AI';
+      return;
+    }
+
+    if (!DISPUTES[agency]) DISPUTES[agency] = [];
+    const base = Date.now();
+    parsed.forEach((item, i) => {
+      DISPUTES[agency].push({
+        id: base + i,
+        title: item.title || 'Uncategorized dispute item',
+        patient: item.patient || '',
+        visitDate: item.visitDate || '',
+        clinician: item.clinician || '',
+        visitType: item.visitType || '',
+        amount: Number(item.amount) || 0,
+        issueType: item.issueType || 'Other / see notes',
+        status: 'Open',
+        note: '',
+        rawText: item.rawText || item.title || ''
+      });
+    });
+
+    saveDisputes();
+    if (textEl) textEl.value = '';
+    dqClearImage();
+    status.textContent = `\u2713 ${parsed.length} item${parsed.length !== 1 ? 's' : ''} added for ${agency}`;
+    status.style.color = 'var(--paid)';
+    renderDisputeQueue();
+    showToast(`${parsed.length} dispute item${parsed.length !== 1 ? 's' : ''} added to ${agency} \u2713`);
+
+    setTimeout(() => {
+      const agencies = Object.keys(DISPUTES).filter(a => DISPUTES[a].length > 0).sort();
+      const idx = agencies.indexOf(agency);
+      if (idx >= 0) {
+        const hdr = document.getElementById('dq-hdr-' + idx);
+        if (hdr && !hdr.classList.contains('dq-open')) toggleDisputeAgency(idx, agency);
+      }
+    }, 150);
+
+  } catch(err) {
+    const msg = err.message || String(err);
+    status.textContent = 'Error: ' + msg;
+    status.style.color = 'var(--rust)';
+    showToast('Error: ' + msg.slice(0,60), 'var(--rust)');
+    console.error('Dispute parse error:', err);
+  }
+
+  btn.disabled = false;
+  btn.textContent = '\u2192 Parse with AI';
+}
+
+function renderDisputeQueue() {
+  initDisputeAgencySelect();
+  const agencies = Object.keys(DISPUTES).filter(a => DISPUTES[a] && DISPUTES[a].length > 0).sort();
+  const list = document.getElementById('dq-agency-list');
+  if (!list) return;
+
+  let totalOpen = 0, totalInProg = 0, totalResolved = 0;
+  agencies.forEach(a => {
+    (DISPUTES[a] || []).forEach(t => {
+      if (t.status === 'Open') totalOpen++;
+      else if (t.status === 'In Progress') totalInProg++;
+      else if (t.status === 'Resolved') totalResolved++;
+    });
+  });
+
+  const el = id => document.getElementById(id);
+  const total = totalOpen + totalInProg + totalResolved;
+  if (el('dq-agency-count')) el('dq-agency-count').textContent = agencies.length || '\u2014';
+  if (el('dq-open-count')) el('dq-open-count').textContent = totalOpen || '\u2014';
+  if (el('dq-inprog-count')) el('dq-inprog-count').textContent = totalInProg || '\u2014';
+  if (el('dq-resolved-count')) el('dq-resolved-count').textContent = totalResolved || '\u2014';
+  if (el('dq-meta')) el('dq-meta').textContent = agencies.length + ' agenc' + (agencies.length === 1 ? 'y' : 'ies') + ' \u00b7 ' + total + ' total items';
+
+  if (!agencies.length) {
+    list.innerHTML = '<div class="no-disputes-msg">No disputes logged yet. Use the paste box above to import correction items from an agency.</div>';
+    return;
+  }
+
+  list.innerHTML = '';
+  agencies.forEach((agencyName, idx) => {
+    const tasks = DISPUTES[agencyName] || [];
+    const openCount = tasks.filter(t => t.status === 'Open').length;
+    const resolvedCount = tasks.filter(t => t.status === 'Resolved').length;
+    const inProgCount = tasks.filter(t => t.status === 'In Progress').length;
+    const totalAmt = tasks.reduce((s, t) => s + (Number(t.amount) || 0), 0);
+    const safeA = agencyName.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+
+    const block = document.createElement('div');
+    block.className = 'dispute-agency-block';
+    block.id = 'dq-block-' + idx;
+
+    block.innerHTML = `
+      <div class="dispute-agency-header" id="dq-hdr-${idx}" onclick="toggleDisputeAgency(${idx}, '${safeA}')">
+        <span class="expand-icon" id="dq-expand-${idx}">\u25b6</span>
+        <span class="dispute-agency-name">${agencyName}</span>
+        ${openCount ? '<span class="dq-badge open-count">' + openCount + ' open</span>' : ''}
+        ${inProgCount ? '<span class="dq-badge" style="background:rgba(232,160,32,.18);color:#9A6010">' + inProgCount + ' in progress</span>' : ''}
+        ${resolvedCount === tasks.length && tasks.length > 0 ? '<span class="dq-badge done-count">All ' + resolvedCount + ' resolved \u2713</span>' : resolvedCount ? '<span class="dq-badge done-count">' + resolvedCount + ' resolved</span>' : ''}
+        ${totalAmt ? '<span class="dq-badge amt-disputed">$' + totalAmt.toLocaleString() + ' disputed</span>' : ''}
+        <button class="btn-download-disputes" onclick="event.stopPropagation();downloadDisputeSheet('${safeA}')">\u2193 Download Sheet</button>
+      </div>
+      <div class="dispute-tasks-wrap" id="dq-tasks-${idx}">
+        ${buildDisputeTasksHTML(agencyName, tasks)}
+      </div>
+    `;
+    list.appendChild(block);
+  });
+}
+
+function buildDisputeTasksHTML(agencyName, tasks) {
+  if (!tasks.length) return '<div class="no-disputes-msg" style="padding:16px">No items for this agency.</div>';
+  const safeA = agencyName.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+  return tasks.map((t, i) => {
+    const issueOpts = DQ_ISSUE_TYPES.map(iss =>
+      `<option value="${iss}" ${t.issueType === iss ? 'selected' : ''}>${iss}</option>`
+    ).join('');
+    const statusOpts = ['Open','In Progress','Resolved'].map(s =>
+      `<option value="${s}" ${t.status === s ? 'selected' : ''}>${s}</option>`
+    ).join('');
+    const metaParts = [t.patient, t.visitDate, t.clinician, t.visitType].filter(Boolean);
+    const meta = metaParts.join(' \u00b7 ');
+    const statusClass = 'status-' + (t.status || 'Open').toLowerCase().replace(/\s+/g,'-');
+    return `
+      <div class="dispute-task-card ${statusClass}" id="dq-card-${t.id}">
+        <div class="dispute-task-num">#${i+1}</div>
+        <div class="dispute-task-body">
+          <div class="dispute-task-title">${t.title}</div>
+          ${meta ? '<div class="dispute-task-meta">' + meta + '</div>' : ''}
+          ${t.amount ? '<div class="dispute-task-meta" style="color:var(--rust);font-weight:600">$' + Number(t.amount).toLocaleString() + ' disputed</div>' : ''}
+          <input class="dispute-task-note" type="text" placeholder="Resolution note \u2014 what was done to fix this\u2026"
+            value="${(t.note || '').replace(/"/g, '&quot;')}"
+            onchange="updateDisputeField('${safeA}', ${t.id}, 'note', this.value)">
+        </div>
+        <select class="dispute-issue-sel" onchange="updateDisputeField('${safeA}', ${t.id}, 'issueType', this.value)">${issueOpts}</select>
+        <select class="dispute-status-sel" onchange="updateDisputeStatus('${safeA}', ${t.id}, this.value)">${statusOpts}</select>
+        <div>
+          <button onclick="deleteDisputeTask('${safeA}', ${t.id})"
+            style="font-family:var(--sans);font-size:10px;padding:4px 8px;background:none;border:1px solid var(--line);border-radius:4px;cursor:pointer;color:var(--rust);width:100%">Remove</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function toggleDisputeAgency(idx, agencyName) {
+  const hdr = document.getElementById('dq-hdr-' + idx);
+  const tasksWrap = document.getElementById('dq-tasks-' + idx);
+  const icon = document.getElementById('dq-expand-' + idx);
+  if (!hdr || !tasksWrap) return;
+  const isOpen = hdr.classList.contains('dq-open');
+  hdr.classList.toggle('dq-open', !isOpen);
+  tasksWrap.classList.toggle('visible', !isOpen);
+  if (icon) icon.classList.toggle('open', !isOpen);
+}
+
+function updateDisputeField(agencyName, taskId, field, value) {
+  if (!DISPUTES[agencyName]) return;
+  const task = DISPUTES[agencyName].find(t => t.id === taskId);
+  if (task) { task[field] = value; saveDisputes(); }
+}
+
+function updateDisputeStatus(agencyName, taskId, newStatus) {
+  if (!DISPUTES[agencyName]) return;
+  const task = DISPUTES[agencyName].find(t => t.id === taskId);
+  if (task) {
+    task.status = newStatus;
+    saveDisputes();
+    const card = document.getElementById('dq-card-' + taskId);
+    if (card) card.className = 'dispute-task-card status-' + newStatus.toLowerCase().replace(/\s+/g,'-');
+    // Update summary counts
+    let to = 0, tip = 0, tr = 0;
+    Object.values(DISPUTES).forEach(arr => arr.forEach(t => {
+      if (t.status==='Open') to++; else if (t.status==='In Progress') tip++; else if (t.status==='Resolved') tr++;
+    }));
+    const el = id => document.getElementById(id);
+    if (el('dq-open-count')) el('dq-open-count').textContent = to || '\u2014';
+    if (el('dq-inprog-count')) el('dq-inprog-count').textContent = tip || '\u2014';
+    if (el('dq-resolved-count')) el('dq-resolved-count').textContent = tr || '\u2014';
+  }
+}
+
+function deleteDisputeTask(agencyName, taskId) {
+  if (!DISPUTES[agencyName]) return;
+  DISPUTES[agencyName] = DISPUTES[agencyName].filter(t => t.id !== taskId);
+  if (!DISPUTES[agencyName].length) delete DISPUTES[agencyName];
+  saveDisputes();
+  renderDisputeQueue();
+}
+
+function downloadDisputeSheet(agencyName) {
+  const tasks = (DISPUTES[agencyName] || []);
+  if (!tasks.length) { showToast('No tasks to download for ' + agencyName, 'var(--gold)'); return; }
+  const today = new Date().toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'});
+  const resolvedCount = tasks.filter(t => t.status === 'Resolved').length;
+  const openCount = tasks.filter(t => t.status === 'Open').length;
+  const inProgCount = tasks.filter(t => t.status === 'In Progress').length;
+  const totalAmt = tasks.reduce((s,t) => s + (Number(t.amount)||0), 0);
+  const escCSV = v => '"' + String(v || '').replace(/"/g,'""') + '"';
+  const summaryRows = [
+    [escCSV('Independence Health Contractors \u2014 Dispute Resolution Summary')],
+    [escCSV('Agency: ' + agencyName), escCSV('Generated: ' + today)],
+    [escCSV('Total Items: ' + tasks.length), escCSV('Open: ' + openCount), escCSV('In Progress: ' + inProgCount), escCSV('Resolved: ' + resolvedCount), escCSV(totalAmt ? 'Total Disputed: $' + totalAmt.toLocaleString() : '')],
+    [''],
+  ].map(r => r.join(',')).join('\n');
+  const headers = ['#','Patient Name','Visit Date','Clinician','Visit Type','Issue Type','Disputed Amount','Status','Resolution Note','Original Description'];
+  const dataRows = tasks.map((t, i) => [
+    i+1, t.patient||'', t.visitDate||'', t.clinician||'', t.visitType||'',
+    t.issueType||'', t.amount ? '$'+Number(t.amount).toLocaleString() : '',
+    t.status||'Open', t.note||'', t.rawText||t.title||''
+  ].map(escCSV).join(','));
+  const csv = summaryRows + '\n' + headers.map(escCSV).join(',') + '\n' + dataRows.join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const safeName = agencyName.replace(/[^a-zA-Z0-9]/g,'_');
+  a.download = 'IHC_Disputes_' + safeName + '_' + today.replace(/\//g,'-') + '.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('Dispute sheet for ' + agencyName + ' downloaded \u2713 \u2014 open in Excel or Google Sheets, then send to agency');
+}
+
+function initDisputeTab() {
+  // Panel is now visible (switchTab made it active before calling this)
+  initDisputeAgencySelect();
+  renderDisputeQueue();
+}
+
+</script>
+</body>
+</html>
