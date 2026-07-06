@@ -318,9 +318,6 @@ tfoot td { border-top: 2px solid var(--teal); background: #EEF0FB; }
   <button class="nav-tab active" onclick="switchTab('dashboard')">Invoices</button>
   <button class="nav-tab" onclick="switchTab('agency')">By Agency</button>
   <button class="nav-tab" onclick="switchTab('log')">Activity Log</button>
-  <button class="nav-tab" onclick="switchTab('cfo')">CFO Report</button>
-  <button class="nav-tab" onclick="switchTab('upload')">Upload</button>
-  <button class="nav-tab" onclick="switchTab('ask-ai')">Ask AI</button>
   <button class="nav-tab" onclick="switchTab('weekly')">Weekly</button>
   <button class="nav-tab" onclick="switchTab('history')">History</button>
   <button class="nav-tab" onclick="switchTab('disputes')">Disputes</button>
@@ -513,68 +510,6 @@ tfoot td { border-top: 2px solid var(--teal); background: #EEF0FB; }
     </div>
   </div>
 
-  <!-- CFO REPORT TAB -->
-  <div class="tab-panel" id="tab-cfo">
-    <div class="dash-header">
-      <div><div class="dash-eyebrow">Independence Health Contractors</div><h1 class="dash-title">CFO Report</h1></div>
-      <div class="dash-meta" id="cfo-meta"></div>
-    </div>
-    <div class="log-session-bar" style="margin-bottom:18px">
-      <div>
-        <span class="field-label" style="display:inline-block;margin-bottom:0;margin-right:10px">Report type:</span>
-        <div class="pill-group" style="display:inline-flex">
-          <button class="pill active" data-cfo="monday" onclick="setCfoType(this)">Monday Report</button>
-          <button class="pill" data-cfo="thursday" onclick="setCfoType(this)">Thursday Report</button>
-        </div>
-      </div>
-      <div style="margin-left:auto;font-family:var(--sans);font-size:12px;color:#8a8174" id="cfo-date-display"></div>
-    </div>
-    <div class="summary-grid" style="margin-bottom:18px">
-      <div class="sum-cell"><div class="sum-label">Total outstanding</div><div class="sum-val rust" id="cfo-total-open" style="font-size:20px">—</div></div>
-      <div class="sum-cell"><div class="sum-label">Agencies with open balance</div><div class="sum-val" id="cfo-agency-count" style="font-size:20px">—</div></div>
-      <div class="sum-cell"><div class="sum-label">At 60+ days (suspension tier)</div><div class="sum-val rust" id="cfo-sixty-count" style="font-size:20px">—</div></div>
-      <div class="sum-cell"><div class="sum-label">Invoices paid in full</div><div class="sum-val paid-color" id="cfo-paid-count" style="font-size:20px">—</div></div>
-    </div>
-    <div class="log-section-label">1 — Collections since last report</div>
-    <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
-      <input class="ctrl-input" id="cfo-collected-agency" placeholder="Agency name" style="min-width:200px">
-      <input class="ctrl-input" id="cfo-collected-amount" placeholder="Amount collected" type="number" style="min-width:140px">
-      <button class="btn-primary" onclick="addCfoPayment()" style="padding:7px 16px;font-size:12px">+ Add</button>
-    </div>
-    <div id="cfo-payments-list" style="margin-bottom:6px"></div>
-    <div style="font-family:var(--sans);font-size:12px;color:#8a8174;margin-bottom:18px">Total collected this period: <strong id="cfo-collected-total" style="color:var(--paid)">$0.00</strong></div>
-    <div class="log-section-label">2 — Outstanding balance by agency (auto-populated)</div>
-    <div class="table-wrap" style="margin-bottom:18px">
-      <table style="min-width:500px">
-        <thead><tr>
-          <th style="cursor:default">Agency</th>
-          <th style="cursor:default;text-align:right">Open Balance</th>
-          <th style="cursor:default">Escalation Tier</th>
-          <th style="cursor:default">Joe’s Status Note</th>
-        </tr></thead>
-        <tbody id="cfo-agency-tbody"></tbody>
-      </table>
-    </div>
-    <div class="log-section-label">3 — AP activity summary</div>
-    <textarea class="ctrl-input" id="cfo-ap-summary" placeholder="e.g. Christine sent 14 emails and 8 texts this period." style="width:100%;min-height:80px;resize:vertical;font-size:13px;line-height:1.5;padding:10px;margin-bottom:18px"></textarea>
-    <div class="log-section-label">4 — Escalation decisions &amp; status changes</div>
-    <textarea class="ctrl-input" id="cfo-escalation" placeholder="e.g. ABL Health Care moved to 50-day final warning." style="width:100%;min-height:80px;resize:vertical;font-size:13px;line-height:1.5;padding:10px;margin-bottom:18px"></textarea>
-    <div class="log-section-label">5 — Flags &amp; notes for owner</div>
-    <textarea class="ctrl-input" id="cfo-flags" placeholder="e.g. Mary’s Help HH has $53K outstanding across 3 months." style="width:100%;min-height:80px;resize:vertical;font-size:13px;line-height:1.5;padding:10px;margin-bottom:18px"></textarea>
-    <div class="log-section-label">6 — Action plan for next 3–4 days</div>
-    <textarea class="ctrl-input" id="cfo-action-plan" placeholder="e.g. Mon: Christine sends batch emails to all 30+ day agencies." style="width:100%;min-height:100px;resize:vertical;font-size:13px;line-height:1.5;padding:10px;margin-bottom:18px"></textarea>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-      <button class="btn-primary" onclick="copyCfoReport()" style="font-size:13px">&#x2B08; Copy PDF Report</button>
-      <button class="btn-default" onclick="downloadCfoPdf()" style="font-size:13px">&#8595; Download PDF</button>
-      <button class="btn-default" onclick="clearCfoReport()" style="font-size:13px;color:var(--rust)">Clear Report</button>
-      <span id="cfo-status" style="font-family:var(--sans);font-size:12px;color:var(--teal);font-weight:700"></span>
-    </div>
-    <div style="margin-top:32px;padding-top:24px;border-top:1px solid var(--line)">
-      <div class="log-section-label">Past CFO reports (this device)</div>
-      <div id="cfo-history-list" style="font-family:var(--sans);font-size:12.5px"></div>
-    </div>
-  </div>
-
   <!-- WEEKLY SUMMARY TAB -->
   <div class="tab-panel" id="tab-weekly">
     <div class="weekly-wrap">
@@ -629,79 +564,6 @@ tfoot td { border-top: 2px solid var(--teal); background: #EEF0FB; }
     <div id="dq-agency-list"><div class="no-disputes-msg">No disputes logged yet.</div></div>
   </div>
 
-  <!-- UPLOAD TAB -->
-  <div class="tab-panel" id="tab-upload">
-    <div class="upload-wrap">
-      <h2>Upload CSV</h2>
-      <p>Add a new invoice export. Duplicate invoice numbers are automatically skipped.</p>
-
-      <div class="dropzone" id="dropzone" onclick="document.getElementById('file-input').click()"
-        ondragover="event.preventDefault();this.classList.add('drag-over')"
-        ondragleave="this.classList.remove('drag-over')"
-        ondrop="handleDrop(event)">
-        <input type="file" id="file-input" accept=".csv" style="display:none" onchange="handleFileInput(this)">
-        <div class="dropzone-icon">📄</div>
-        <div class="dropzone-title">Drop a CSV file here or click to browse</div>
-        <div class="dropzone-hint">Expects QuickBooks invoice export format (Date, Invoice #, Name, Amount, Open Balance)</div>
-      </div>
-
-      <div class="upload-preview" id="upload-preview" style="display:none">
-        <div class="preview-ok" id="preview-ok"></div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th style="cursor:default">Date</th>
-                <th style="cursor:default">#</th>
-                <th style="cursor:default">Contractor</th>
-                <th class="num-h" style="cursor:default">Amount</th>
-                <th class="num-h" style="cursor:default">Open</th>
-              </tr>
-            </thead>
-            <tbody id="preview-body"></tbody>
-          </table>
-        </div>
-        <div class="btn-row">
-          <button class="btn-primary" onclick="confirmUpload()">Add to Dashboard</button>
-          <button class="btn-default" onclick="cancelUpload()">Cancel</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ASK AI TAB -->
-  <div class="tab-panel" id="tab-ask-ai">
-    <div class="ai-wrap">
-      <h2>Ask AI</h2>
-      <p>Ask any question about the invoice data in plain English.</p>
-
-      <div class="suggestions" id="suggestions">
-        <button class="suggestion-pill" onclick="setAiInput(this.textContent)">Which contractor has the highest open balance?</button>
-        <button class="suggestion-pill" onclick="setAiInput(this.textContent)">Show me all unpaid invoices from June</button>
-        <button class="suggestion-pill" onclick="setAiInput(this.textContent)">What's the total billed per month?</button>
-        <button class="suggestion-pill" onclick="setAiInput(this.textContent)">Which contractors are fully paid up?</button>
-      </div>
-
-      <div class="chat-outer">
-        <div class="chat-messages" id="chat-messages"></div>
-        <div class="chat-input-row">
-          <input class="ctrl-input" id="ai-input" placeholder="Ask a question about the invoices…"
-            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAI();}">
-          <button class="btn-primary" id="ai-send-btn" onclick="sendAI()">Ask</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- WEEKLY SUMMARY TAB -->
-  <div class="tab-panel" id="tab-weekly">
-    <div class="weekly-wrap">
-      <h2>Weekly Summary</h2>
-      <p>Week-over-week snapshot of AR activity. Updates automatically as invoices are changed.</p>
-      <div id="weekly-content"></div>
-    </div>
-  </div>
-
   <!-- HISTORY TAB -->
   <div class="tab-panel" id="tab-history">
     <div class="history-wrap">
@@ -735,10 +597,7 @@ const SEED = [{"date":"01/06/2026","num":"1501","name":"BLC HH","due":"01/15/202
 
 let DATA = JSON.parse(JSON.stringify(SEED));
 let UPLOADS = [{ name: 'Independence_Health_Contractors (seed)', date: new Date().toLocaleDateString(), count: SEED.length }];
-let pendingRows = null, pendingFilename = null;
 let sortKey = 'date', sortDir = 1, statusFilter = '';
-let chatMessages = [];
-let aiThinking = false;
 
 // ── HELPERS ──────────────────────────────────────────────────────────────────
 const fmt = n => '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -765,9 +624,6 @@ function switchTab(name) {
     if (name === 'dashboard' && (t === 'invoices' || t === 'dashboard')) b.classList.add('active');
     else if (name === 'agency' && t === 'byagency') b.classList.add('active');
     else if (name === 'log' && t === 'activitylog') b.classList.add('active');
-    else if (name === 'cfo' && t === 'cforeport') b.classList.add('active');
-    else if (name === 'upload' && t === 'upload') b.classList.add('active');
-    else if (name === 'ask-ai' && t === 'askai') b.classList.add('active');
     else if (name === 'weekly' && t === 'weekly') b.classList.add('active');
     else if (name === 'history' && t === 'history') b.classList.add('active');
     else if (name === 'disputes' && t === 'disputes') b.classList.add('active');
@@ -775,9 +631,7 @@ function switchTab(name) {
   if (name === 'dashboard') renderDashboard();
   if (name === 'agency') renderAgencyView();
   if (name === 'log') initLog();
-  if (name === 'cfo') initCfoReport();
   if (name === 'history') renderHistory();
-  if (name === 'ask-ai') initChat();
   if (name === 'weekly') renderWeekly();
   if (name === 'disputes') initDisputeTab();
 }
@@ -902,144 +756,10 @@ function resetFilters() {
 }
 
 // ── UPLOAD ────────────────────────────────────────────────────────────────────
-function parseCSV(text) {
-  const lines = text.trim().split('\n');
-  let hi = lines.findIndex(l => l.toLowerCase().includes('date') && l.toLowerCase().includes('amount'));
-  if (hi < 0) hi = 0;
-  const parsed = [];
-  for (let i = hi + 1; i < lines.length; i++) {
-    const cols = lines[i].match(/(\".*?\"|[^,]+)(?=,|$)/g)?.map(c => c.replace(/^\"|\"$/g, '').trim()) || [];
-    if (!cols[0] || cols[0] === 'TOTAL') continue;
-    const amt = parseAmt(cols[6]), opn = parseAmt(cols[7]);
-    if (!amt) continue;
-    parsed.push({ date: cols[0], num: cols[2] || '', name: cols[3] || '', due: cols[5] || cols[0], amount: amt, open: opn });
-  }
-  return parsed;
-}
 
-function handleDrop(e) {
-  e.preventDefault();
-  document.getElementById('dropzone').classList.remove('drag-over');
-  processFile(e.dataTransfer.files[0]);
-}
-
-function handleFileInput(input) { processFile(input.files[0]); }
-
-function processFile(file) {
-  if (!file) return;
-  pendingFilename = file.name;
-  const reader = new FileReader();
-  reader.onload = e => {
-    pendingRows = parseCSV(e.target.result);
-    document.getElementById('preview-ok').textContent = '✓ Parsed ' + pendingRows.length + ' invoices from ' + pendingFilename;
-    const pb = document.getElementById('preview-body');
-    pb.innerHTML = '';
-    pendingRows.slice(0, 8).forEach(r => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${r.date}</td><td>${r.num}</td><td class="name-col">${r.name}</td><td class="num-col">${fmt(r.amount)}</td><td class="num-col">${fmt(r.open)}</td>`;
-      pb.appendChild(tr);
-    });
-    if (pendingRows.length > 8) {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td colspan="5" style="color:#9a9182;font-style:italic;font-size:12px;font-family:var(--sans)">…and ${pendingRows.length - 8} more</td>`;
-      pb.appendChild(tr);
-    }
-    document.getElementById('upload-preview').style.display = 'block';
-  };
-  reader.readAsText(file);
-}
-
-function confirmUpload() {
-  if (!pendingRows) return;
-  let added = 0;
-  pendingRows.forEach(r => {
-    if (!DATA.some(m => m.num === r.num && m.name === r.name)) { DATA.push(r); added++; }
-  });
-  UPLOADS.unshift({ name: pendingFilename, date: new Date().toLocaleDateString(), count: pendingRows.length, added });
-  initDropdowns();
-  showToast(added + ' new invoices added ✓');
-  cancelUpload();
-}
-
-function cancelUpload() {
-  pendingRows = null; pendingFilename = null;
-  document.getElementById('upload-preview').style.display = 'none';
-  document.getElementById('file-input').value = '';
-}
 
 // ── ASK AI ────────────────────────────────────────────────────────────────────
-function initChat() {
-  if (chatMessages.length === 0) {
-    chatMessages.push({ role: 'ai', text: 'Hi! I have access to all ' + DATA.length + ' invoices in this project. Ask me anything — which contractors have the highest open balances, payment trends, overdue analysis, or anything else.' });
-    renderChat();
-  }
-}
 
-function renderChat() {
-  const container = document.getElementById('chat-messages');
-  container.innerHTML = '';
-  chatMessages.forEach(m => {
-    const div = document.createElement('div');
-    div.className = 'msg ' + (m.role === 'user' ? 'user' : 'ai');
-    div.textContent = m.text;
-    container.appendChild(div);
-  });
-  if (aiThinking) {
-    const div = document.createElement('div');
-    div.className = 'msg thinking';
-    div.textContent = 'Analyzing ' + DATA.length + ' invoices…';
-    container.appendChild(div);
-  }
-  container.scrollTop = container.scrollHeight;
-  document.getElementById('suggestions').style.display = chatMessages.length > 1 ? 'none' : 'flex';
-}
-
-function setAiInput(text) { document.getElementById('ai-input').value = text; document.getElementById('ai-input').focus(); }
-
-async function sendAI() {
-  const q = document.getElementById('ai-input').value.trim();
-  if (!q || aiThinking) return;
-  document.getElementById('ai-input').value = '';
-  chatMessages.push({ role: 'user', text: q });
-  aiThinking = true;
-  renderChat();
-  document.getElementById('ai-send-btn').textContent = '…';
-  document.getElementById('ai-send-btn').disabled = true;
-
-  const byC = {};
-  DATA.forEach(r => {
-    if (!byC[r.name]) byC[r.name] = { total: 0, open: 0, count: 0 };
-    byC[r.name].total += r.amount; byC[r.name].open += r.open; byC[r.name].count++;
-  });
-  const summary = Object.entries(byC).map(([n,v]) => `${n}: ${v.count} invoices, billed $${v.total.toLocaleString()}, open $${v.open.toLocaleString()}`).join('\n');
-  const totalBilled = DATA.reduce((s,r) => s+r.amount, 0);
-  const totalOpen = DATA.reduce((s,r) => s+r.open, 0);
-
-  const systemPrompt = `You are a financial analyst for Independence Health Contractors, a home health staffing company. Invoice data Feb–Jun 2026.\n\nSTATS:\nTotal invoices: ${DATA.length}\nTotal billed: $${totalBilled.toLocaleString()}\nTotal open: $${totalOpen.toLocaleString()}\nContractors: ${[...new Set(DATA.map(r=>r.name))].length}\n\nPER-CONTRACTOR:\n${summary}\n\nFULL DATA:\n${JSON.stringify(DATA)}\n\nBe concise and direct. Use $ with commas. Line breaks for lists.`;
-
-  const apiMessages = chatMessages
-    .filter((m, i) => m.role !== 'ai' || i === 0)
-    .slice(-8)
-    .map(m => ({ role: m.role === 'ai' ? 'assistant' : 'user', content: m.text }));
-  if (apiMessages[apiMessages.length - 1]?.content !== q) apiMessages.push({ role: 'user', content: q });
-
-  try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1000, system: systemPrompt, messages: apiMessages })
-    });
-    const d = await res.json();
-    const text = d.content?.find(b => b.type === 'text')?.text || 'Sorry, no response received.';
-    chatMessages.push({ role: 'ai', text });
-  } catch (_) {
-    chatMessages.push({ role: 'ai', text: 'Something went wrong. Please try again.' });
-  }
-  aiThinking = false;
-  document.getElementById('ai-send-btn').textContent = 'Ask';
-  document.getElementById('ai-send-btn').disabled = false;
-  renderChat();
-}
 
 // ── WEEKLY SNAPSHOTS ──────────────────────────────────────────────────────────
 // Weeks run Sun–Sat. Each entry has a label, dateRange, and either:
@@ -1320,7 +1040,6 @@ function resetProject() {
   if (!confirm('Reset all data to the original seed? This cannot be undone.')) return;
   DATA = JSON.parse(JSON.stringify(SEED));
   UPLOADS = [{ name: 'Seed data restored', date: new Date().toLocaleDateString(), count: SEED.length }];
-  chatMessages = [];
   initDropdowns();
   renderHistory();
   showToast('Project reset to seed data');
@@ -1689,45 +1408,6 @@ function renderLogHistory() { const entries = JSON.parse(localStorage.getItem('i
 function clearLog() { if (!confirm('Clear this session?')) return; logChecked={}; logPayments=[]; document.getElementById('log-flags').value=''; document.getElementById('log-send-status').textContent=''; renderPaymentTags(); renderLogChecklist(); showToast('Session cleared'); }
 function initLog() { renderLogChecklist(); renderLogHistory(); }
 
-// ── CFO REPORT ────────────────────────────────────────────────────────────────
-let cfoType = 'monday', cfoPayments = [], cfoNotes = {};
-function setCfoType(btn) { document.querySelectorAll('#tab-cfo .log-session-bar .pill').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); cfoType=btn.dataset.cfo; }
-function initCfoReport() {
-  const today = new Date(); const days=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-  document.getElementById('cfo-date-display').textContent = days[today.getDay()] + ', ' + today.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
-  document.getElementById('cfo-meta').textContent = 'For owner review — ' + (cfoType==='monday'?'Monday':'Thursday');
-  const totalOpen = DATA.reduce((s,r)=>s+r.open,0);
-  const agenciesOpen = Object.keys(groupByAgency(DATA.filter(r=>r.open>0))).length;
-  const sixtyPlus = Object.entries(groupByAgency(DATA.filter(r=>r.open>0))).filter(([,invs])=>agencyMaxDays(invs)>=60).length;
-  document.getElementById('cfo-total-open').textContent = fmtShort(totalOpen);
-  document.getElementById('cfo-agency-count').textContent = agenciesOpen;
-  document.getElementById('cfo-sixty-count').textContent = sixtyPlus;
-  document.getElementById('cfo-paid-count').textContent = DATA.filter(r=>r.open<=0).length + ' / ' + DATA.length;
-  const agencyMap = groupByAgency(DATA.filter(r=>r.open>0));
-  const agencies = Object.entries(agencyMap).sort((a,b)=>agencyMaxDays(b[1])-agencyMaxDays(a[1]));
-  const tbody = document.getElementById('cfo-agency-tbody'); tbody.innerHTML='';
-  agencies.forEach(([name,invoices]) => {
-    const totalAgOpen = invoices.reduce((s,r)=>s+r.open,0); const maxDays=agencyMaxDays(invoices); const note=cfoNotes[name]||''; const safeName=name.replace(/'/g,"\\'");
-    const tr=document.createElement('tr'); tr.innerHTML=`<td style="font-weight:600;font-size:13px">${name}</td><td style="text-align:right;color:var(--rust);font-weight:600;font-variant-numeric:tabular-nums">${fmt(totalAgOpen)}</td><td>${daysBadge(maxDays)}</td><td><input class="log-note" type="text" value="${note.replace(/"/g,'&quot;')}" placeholder="Status, promise, dispute…" onchange="cfoNotes['${safeName}']=this.value"></td>`;
-    tbody.appendChild(tr);
-  });
-  renderCfoHistory();
-}
-function addCfoPayment() { const agency=document.getElementById('cfo-collected-agency').value.trim(); const amount=parseFloat(document.getElementById('cfo-collected-amount').value); if(!agency||!amount){showToast('Enter agency and amount','var(--gold)');return;} cfoPayments.push({agency,amount}); document.getElementById('cfo-collected-agency').value=''; document.getElementById('cfo-collected-amount').value=''; renderCfoPayments(); }
-function removeCfoPayment(idx){cfoPayments.splice(idx,1);renderCfoPayments();}
-function renderCfoPayments(){const el=document.getElementById('cfo-payments-list');el.innerHTML='';cfoPayments.forEach((p,i)=>{const span=document.createElement('span');span.className='payment-tag';span.innerHTML=`${p.agency}: ${fmt(p.amount)} <button onclick="removeCfoPayment(${i})">×</button>`;el.appendChild(span);});document.getElementById('cfo-collected-total').textContent=fmt(cfoPayments.reduce((s,p)=>s+p.amount,0));}
-function buildCfoReport(){const today=new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});const type=cfoType==='monday'?'Monday':'Thursday';const totalOpen=DATA.reduce((s,r)=>s+r.open,0);const collectedTotal=cfoPayments.reduce((s,p)=>s+p.amount,0);const agencyMap=groupByAgency(DATA.filter(r=>r.open>0));const agencyLines=Object.entries(agencyMap).sort((a,b)=>agencyMaxDays(b[1])-agencyMaxDays(a[1])).map(([name,invs])=>{const open=invs.reduce((s,r)=>s+r.open,0);const d=agencyMaxDays(invs);const tier=d>=60?'60+ DAYS — SUSPENSION':d>=50?'50 days — Final warning':d>=40?'40 days — Urgent':d>=30?'30 days — Notice':'<30 days';const note=cfoNotes[name]?'\n      Status: '+cfoNotes[name]:'';return`  • ${name} — ${fmt(open)} — ${tier}${note}`;}).join('\n');const collectedLines=cfoPayments.length?cfoPayments.map(p=>`  • ${p.agency}: ${fmt(p.amount)}`).join('\n')+`\n\n  TOTAL COLLECTED: ${fmt(collectedTotal)}`:'  None reported';return`CFO REPORT — ${type.toUpperCase()} — ${today}\n\nTOTAL OUTSTANDING: ${fmt(totalOpen)}\nAGENCIES WITH OPEN INVOICES: ${Object.keys(agencyMap).length}\nAT 60+ DAYS: ${Object.entries(agencyMap).filter(([,i])=>agencyMaxDays(i)>=60).length}\n\n1. COLLECTIONS SINCE LAST REPORT\n${collectedLines}\n\n2. OUTSTANDING BALANCE BY AGENCY\n${agencyLines}\n\n3. AP ACTIVITY SUMMARY\n${document.getElementById('cfo-ap-summary').value.trim()||'No summary entered'}\n\n4. ESCALATION DECISIONS\n${document.getElementById('cfo-escalation').value.trim()||'No escalation updates'}\n\n5. FLAGS FOR OWNER\n${document.getElementById('cfo-flags').value.trim()||'None'}\n\n6. ACTION PLAN — NEXT 3–4 DAYS\n${document.getElementById('cfo-action-plan').value.trim()||'No action plan entered'}\n\nIndependence Health Contractors | Joe [Last Name], CFO — ihc.cfo@gmail.com`;}
-function copyCfoReport(){const report=buildCfoReport();navigator.clipboard.writeText(report).then(()=>{document.getElementById('cfo-status').textContent='✓ Copied';showToast('CFO report copied ✓');saveCfoHistory(report);}).catch(()=>showToast('Copy failed','var(--rust)'));}
-function downloadCfoPdf(){const report=buildCfoReport();const today=new Date().toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'}).replace(/\//g,'-');const type=cfoType==='monday'?'Monday':'Thursday';const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>CFO Report ${type} ${today}</title><style>body{font-family:'Helvetica Neue',Arial,sans-serif;font-size:13px;color:#1A1A2E;max-width:760px;margin:40px auto;padding:0 24px;line-height:1.7}pre{white-space:pre-wrap;font-family:inherit;font-size:12px;background:#F0F2F8;padding:14px;border:1px solid #D0D5E8}</style></head><body><pre>${report.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre></body></html>`;const blob=new Blob([html],{type:'text/html'});const url=URL.createObjectURL(blob);const win=window.open(url,'_blank');if(win)setTimeout(()=>win.print(),800);saveCfoHistory(report);}
-function saveCfoHistory(report){const key='ihc_cfo_history';const existing=JSON.parse(localStorage.getItem(key)||'[]');existing.unshift({date:new Date().toLocaleString(),type:cfoType,report});localStorage.setItem(key,JSON.stringify(existing.slice(0,10)));renderCfoHistory();}
-function renderCfoHistory(){const entries=JSON.parse(localStorage.getItem('ihc_cfo_history')||'[]');const el=document.getElementById('cfo-history-list');if(!entries.length){el.innerHTML='<div style="color:#9CA3AF;font-size:12px">No past reports saved yet.</div>';return;}el.innerHTML='';entries.forEach(e=>{const div=document.createElement('div');div.className='log-history-entry';div.innerHTML=`<div class="log-history-date">${e.type==='monday'?'Monday':'Thursday'} Report — ${e.date}</div><details><summary style="cursor:pointer;font-size:12px;color:var(--teal)">View report</summary><div class="log-history-body">${e.report.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</div></details>`;el.appendChild(div);});}
-function clearCfoReport(){if(!confirm('Clear this CFO report?'))return;cfoPayments=[];cfoNotes={};['cfo-ap-summary','cfo-escalation','cfo-flags','cfo-action-plan'].forEach(id=>document.getElementById(id).value='');document.getElementById('cfo-status').textContent='';renderCfoPayments();initCfoReport();showToast('CFO report cleared');}
-
-// ── DISPUTE QUEUE ─────────────────────────────────────────────────────────────
-initDropdowns();
-renderDashboard();
-initGmailStatus();
-
 // ── DISPUTE QUEUE JS ──────────────────────────────────────────────────────────
 let DISPUTES = {};
 try { DISPUTES = JSON.parse(localStorage.getItem('ihc_disputes') || '{}'); } catch(e) { DISPUTES = {}; }
@@ -1810,6 +1490,13 @@ function updateDisputeStatus(agencyName,taskId,newStatus){if(!DISPUTES[agencyNam
 function deleteDisputeTask(agencyName,taskId){if(!DISPUTES[agencyName])return;DISPUTES[agencyName]=DISPUTES[agencyName].filter(t=>t.id!==taskId);if(!DISPUTES[agencyName].length)delete DISPUTES[agencyName];saveDisputes();renderDisputeQueue();}
 function downloadDisputeSheet(agencyName){const tasks=DISPUTES[agencyName]||[];if(!tasks.length){showToast('No tasks to download','var(--gold)');return;}const today=new Date().toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'});const escCSV=v=>'"'+String(v||'').replace(/"/g,'""')+'"';const headers=['#','Patient Name','Visit Date','Clinician','Visit Type','Issue Type','Disputed Amount','Status','Resolution Note','Original Description'];const dataRows=tasks.map((t,i)=>[i+1,t.patient||'',t.visitDate||'',t.clinician||'',t.visitType||'',t.issueType||'',t.amount?'$'+Number(t.amount).toLocaleString():'',t.status||'Open',t.note||'',t.rawText||t.title||''].map(escCSV).join(','));const csv=headers.map(escCSV).join(',')+'\n'+dataRows.join('\n');const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='IHC_Disputes_'+agencyName.replace(/[^a-zA-Z0-9]/g,'_')+'_'+today.replace(/\//g,'-')+'.csv';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);showToast('Dispute sheet downloaded ✓');}
 function initDisputeTab(){initDisputeAgencySelect();renderDisputeQueue();}
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+  initDropdowns();
+  renderDashboard();
+  initGmailStatus();
+});
 
 </script>
 </body>
