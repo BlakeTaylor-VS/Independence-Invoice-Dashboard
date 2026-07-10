@@ -1176,7 +1176,7 @@ function initGmailStatus() {
   else { dot.classList.remove('connected'); txt.innerHTML = 'Gmail not connected — <a href="#" onclick="connectGmail();return false;" style="color:var(--teal);font-weight:700">Connect AP@ Gmail</a> to enable one-click drafts'; acc.textContent = ''; }
 }
 function connectGmail() {
-  const params = new URLSearchParams({ client_id: GMAIL_CLIENT_ID, redirect_uri: window.location.href.split('?')[0], response_type: 'token', scope: GMAIL_SCOPES, prompt: 'select_account' });
+  const params = new URLSearchParams({ client_id: GMAIL_CLIENT_ID, redirect_uri: 'https://independence-invoice-dashboard.onrender.com', response_type: 'token', scope: GMAIL_SCOPES, prompt: 'select_account' });
   const popup = window.open('https://accounts.google.com/o/oauth2/v2/auth?' + params.toString(), 'gmail_auth', 'width=500,height=600,left=200,top=100');
   const interval = setInterval(() => {
     try { if (popup.closed) { clearInterval(interval); return; } const hash = popup.location.hash; if (hash && hash.includes('access_token')) { clearInterval(interval); popup.close(); const p = new URLSearchParams(hash.substring(1)); gmailToken = p.get('access_token'); sessionStorage.setItem('gmail_token', gmailToken); fetchGmailUser(); } } catch(e) {}
