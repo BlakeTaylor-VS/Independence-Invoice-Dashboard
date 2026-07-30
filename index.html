@@ -322,6 +322,7 @@ tfoot td { border-top: 2px solid var(--teal); background: #EEF0FB; }
   <button class="nav-tab" onclick="switchTab('history')">History</button>
   <button class="nav-tab" onclick="switchTab('disputes')">Disputes</button>
   <div class="nav-right">
+    <button class="btn-sync" onclick="openClaudeRefresh()" style="background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.4);margin-right:2px" title="Opens Claude to refresh QB data">⟳ QB Refresh</button>
     <button class="btn-sync" onclick="syncData()">Sync</button>
   </div>
 </nav>
@@ -1043,6 +1044,13 @@ function resetProject() {
   initDropdowns();
   renderHistory();
   showToast('Project reset to seed data');
+}
+
+function openClaudeRefresh() {
+  // Opens this Claude conversation with "refresh" pre-filled
+  const claudeUrl = 'https://claude.ai/chat/41b44c76-bcee-4be8-81d9-0dc75f7a6a6d';
+  window.open(claudeUrl, '_blank');
+  showToast('Claude opened — type "refresh" and hit Enter ↵', 'var(--teal)');
 }
 
 async function syncData() {
