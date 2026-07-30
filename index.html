@@ -1052,112 +1052,59 @@ async function syncData() {
   btn.disabled = true;
 
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1000,
-        system: `You are a QuickBooks data fetcher. The user wants to refresh invoice data from QuickBooks Online.
-Use the QuickBooks MCP tool qbo_sales_get_invoices with limit=1000 to fetch all invoices.
-Return ONLY a JSON array of invoice objects with these exact fields:
-{ "num": "invoice number", "name": "customer name", "date": "MM/DD/YYYY", "due": "MM/DD/YYYY", "amount": number, "open": number }
-Convert txn_date and due_date from YYYY-MM-DD to MM/DD/YYYY format.
-amount = float(invoice.amount), open = float(invoice.balance_amount).
-Return ONLY the JSON array, no markdown, no explanation.`,
-        messages: [{ role: 'user', content: 'Fetch all QuickBooks invoices and return them as a JSON array.' }],
-        mcp_servers: [{ type: 'url', url: 'https://ai-inc.quickbooks.intuit.com/v1/mcp', name: 'quickbooks-mcp' }]
-      })
-    });
+    const res = await fetch('/api/invoices');
 
-    const d = await res.json();
-
-    // Extract JSON from response — could be in text blocks or mcp_tool_result blocks
-    let jsonText = '';
-
-    // Try text blocks first
-    const textBlocks = (d.content || []).filter(b => b.type === 'text');
-    if (textBlocks.length) {
-      jsonText = textBlocks.map(b => b.text).join('');
+    if (res.status === 401) {
+      const data = await res.json().catch(() => ({}));
+      const connect = confirm('QuickBooks is not connected.\n\nClick OK to connect your QuickBooks account now.');
+      if (connect) window.location.href = data.connectUrl || '/auth/connect';
+      btn.textContent = origText;
+      btn.disabled = false;
+      return;
     }
 
-    // Try mcp_tool_result blocks
-    if (!jsonText.trim().startsWith('[')) {
-      const toolResults = (d.content || []).filter(b => b.type === 'mcp_tool_result');
-      if (toolResults.length) {
-        const raw = toolResults.map(b => b.content?.[0]?.text || '').join('');
-        try {
-          const parsed = JSON.parse(raw);
-          const invoices = parsed.data || parsed;
-          if (Array.isArray(invoices)) {
-            jsonText = JSON.stringify(invoices.map(inv => ({
-              num: inv.reference_number || '',
-              name: inv.contact?.display_name || '',
-              date: fmtQBDate(inv.txn_date),
-              due: fmtQBDate(inv.due_date),
-              amount: Math.round(parseFloat(inv.amount || 0) * 100) / 100,
-              open: Math.round(parseFloat(inv.balance_amount || 0) * 100) / 100
-            })));
-          }
-        } catch(e) {}
-      }
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.message || `Server error ${res.status}`);
     }
 
-    if (!jsonText.trim().startsWith('[')) {
-      throw new Error('Could not parse invoice data from QuickBooks response');
-    }
+    const result = await res.json();
+    const qbInvoices = result.invoices || [];
+    if (!qbInvoices.length) throw new Error('No invoices returned from QuickBooks');
 
-    // Clean up markdown fences if present
-    jsonText = jsonText.trim().replace(/^```json\s*/,'').replace(/^```\s*/,'').replace(/\s*```$/,'');
-    const qbInvoices = JSON.parse(jsonText);
-
-    if (!Array.isArray(qbInvoices) || !qbInvoices.length) {
-      throw new Error('No invoices returned from QuickBooks');
-    }
-
-    // Merge QB data into DATA — update existing, add new
     const qbMap = {};
     qbInvoices.forEach(r => { if (r.num) qbMap[r.num] = r; });
 
     let updated = 0, added = 0;
     DATA.forEach((r, i) => {
       if (qbMap[r.num]) {
-        const qb = qbMap[r.num];
-        if (r.open !== qb.open || r.amount !== qb.amount) updated++;
-        DATA[i] = { ...r, amount: qb.amount, open: qb.open, name: qb.name };
+        const q = qbMap[r.num];
+        if (r.open !== q.open || r.amount !== q.amount) updated++;
+        DATA[i] = { ...r, amount: q.amount, open: q.open, name: q.name };
       }
     });
 
     const existingNums = new Set(DATA.map(r => r.num));
     qbInvoices.forEach(r => {
-      if (r.num && !existingNums.has(r.num)) {
-        DATA.push(r);
-        added++;
-      }
+      if (r.num && !existingNums.has(r.num)) { DATA.push(r); added++; }
     });
 
     initDropdowns();
     renderDashboard();
     if (document.getElementById('tab-agency').classList.contains('active')) renderAgencyView();
 
-    const msg = `QB sync complete — ${updated} updated, ${added} new · ${DATA.length} total invoices`;
-    showToast(msg, 'var(--paid)');
     UPLOADS.unshift({ name: 'QuickBooks live sync', date: new Date().toLocaleDateString(), count: qbInvoices.length, added });
 
-  } catch(err) {
-    console.error('QB sync error:', err);
+    const syncTime = result.syncedAt ? new Date(result.syncedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
+    showToast(`✓ Synced ${qbInvoices.length} invoices · ${updated} updated · ${added} new${syncTime ? ' · ' + syncTime : ''}`, 'var(--paid)');
+
+  } catch (err) {
+    console.error('Sync error:', err);
     showToast('Sync failed: ' + err.message.slice(0, 60), 'var(--rust)');
   }
 
   btn.textContent = origText;
   btn.disabled = false;
-}
-
-function fmtQBDate(d) {
-  if (!d) return '';
-  const parts = d.split('-');
-  if (parts.length === 3) return `${parts[1]}/${parts[2]}/${parts[0]}`;
-  return d;
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
