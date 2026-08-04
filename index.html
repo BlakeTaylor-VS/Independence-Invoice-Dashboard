@@ -322,6 +322,7 @@ tfoot td { border-top: 2px solid var(--teal); background: #EEF0FB; }
   <button class="nav-tab" onclick="switchTab('history')">History</button>
   <button class="nav-tab" onclick="switchTab('disputes')">Disputes</button>
   <div class="nav-right">
+    <span id="last-refresh" style="font-family:var(--sans);font-size:10px;color:rgba(255,255,255,.5);margin-right:4px;text-align:right;line-height:1.3"></span>
     <button class="btn-sync" onclick="openClaudeRefresh()" style="background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.4);margin-right:2px" title="Opens Claude to refresh QB data">⟳ QB Refresh</button>
     <button class="btn-sync" onclick="syncData()">Sync</button>
   </div>
@@ -1479,7 +1480,10 @@ function downloadDisputeSheet(agencyName){const tasks=DISPUTES[agencyName]||[];i
 function initDisputeTab(){initDisputeAgencySelect();renderDisputeQueue();}
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
+const LAST_REFRESH = '08/03/2026 5:23 PM PT';
 document.addEventListener('DOMContentLoaded', function() {
+  const el = document.getElementById('last-refresh');
+  if (el) el.innerHTML = 'QB Last Refreshed<br>' + LAST_REFRESH;
   initDropdowns();
   renderDashboard();
   initGmailStatus();
