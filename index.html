@@ -1230,14 +1230,17 @@ async function fetchGmailUser() {
   initGmailStatus(); showToast('Gmail connected ✓ · ' + (gmailUser || 'AP@'));
 }
 function calcLateFee(openAmount, days) {
-  // Per contract terms: a 3% late fee applies as soon as an invoice is past due
-  // (i.e. 31 days after it was sent, given standard 30-day terms — see Date Sent),
-  // then an additional $50 plus 3% compounding is added every 7 days after that.
+  // Per contract terms: once an invoice is past due (31 days after it was sent,
+  // given standard 30-day terms — see Date Sent), a $50 fee is added for every
+  // full week it remains unpaid, then a single 3% fee is charged on top of the
+  // resulting balance (original invoice + accrued weekly fees). The 3% is a
+  // one-time surcharge recalculated fresh against the current balance each time
+  // — it does not compound on top of itself week over week.
   if (days < 1) return { fees: 0, total: openAmount };
-  let balance = openAmount * 1.03;
-  const cycles = Math.floor((days - 1) / 7);
-  for (let i = 0; i < cycles; i++) { balance = (balance + 50) * 1.03; }
-  return { fees: balance - openAmount, total: balance };
+  const weeksLate = Math.floor(days / 7);
+  const subtotal = openAmount + 50 * weeksLate;
+  const total = subtotal * 1.03;
+  return { fees: total - openAmount, total };
 }
 function buildAgencyEmail(agencyName, invoices) {
   const totalOpen = invoices.reduce((s, r) => s + r.open, 0);
@@ -1257,7 +1260,7 @@ function buildAgencyEmail(agencyName, invoices) {
   const tableHeader = isPastDue ? `<tr style="background:#f3f4f6;"><th style="padding:7px 10px;text-align:left;">Invoice</th><th style="padding:7px 10px;text-align:left;">Due Date</th><th style="padding:7px 10px;text-align:left;">Status</th><th style="padding:7px 10px;text-align:left;">Original Open</th><th style="padding:7px 10px;text-align:left;">Late Fees Accrued</th><th style="padding:7px 10px;text-align:left;">New Total Due</th></tr>` : `<tr style="background:#f3f4f6;"><th style="padding:7px 10px;text-align:left;">Invoice</th><th style="padding:7px 10px;text-align:left;">Due Date</th><th style="padding:7px 10px;text-align:left;">Billed</th><th style="padding:7px 10px;text-align:left;">Open Balance</th><th style="padding:7px 10px;text-align:left;">Status</th></tr>`;
   const invoiceTable = `<table style="border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:13px;margin:10px 0;"><thead>${tableHeader}</thead><tbody>${rows}</tbody></table><p style="font-family:Arial,sans-serif;font-size:13px;color:${rowColor};font-weight:bold;">Total Outstanding (Original): ${totalFmt}${isPastDue ? ` &nbsp;|&nbsp; Total With Late Fees: ${fmt(totalWithFees)}` : ''}</p>`;
   const discountNotice = `<p style="font-family:Arial,sans-serif;font-size:15px;font-weight:bold;color:#15803d;margin:18px 0;padding:12px 16px;border:2px solid #15803d;border-radius:6px;">EARLY PAYMENT DISCOUNT: If your agency has maintained good standing, you are eligible to earn a 2% discount by paying this invoice in full within 30 days of the invoice date.</p>`;
-  const lateFeeNotice = `<p style="font-family:Arial,sans-serif;font-size:13px;font-weight:bold;color:#b91c1c;margin:16px 0;padding:12px 16px;border:2px solid #b91c1c;border-radius:6px;">LATE FEE NOTICE: Per the Invoicing and Payment Terms of your signed contract, a 3% late fee applies as soon as an invoice becomes past due (31 days from the invoice date), and an additional $50.00 plus 3% (compounding) is added every 7 days thereafter until paid in full.</p>`;
+  const lateFeeNotice = `<p style="font-family:Arial,sans-serif;font-size:13px;font-weight:bold;color:#b91c1c;margin:16px 0;padding:12px 16px;border:2px solid #b91c1c;border-radius:6px;">LATE FEE NOTICE: Per the Invoicing and Payment Terms of your signed contract, a $50.00 fee is added for every full week an invoice remains unpaid past its due date, plus a 3% fee on the resulting balance, until paid in full.</p>`;
   const sig = `<p style="font-family:Arial,sans-serif;font-size:13px;margin-top:24px;">Sincerely,<br><strong>Christine Woods</strong><br>Accounts Receivable Manager | Independence Health Contractors<br>AP@independencehealthc.com | (513) 532-9819</p>`;
   const base = `font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#111;max-width:680px;`;
   if (maxDays >= 60) return { subject: `SERVICE SUSPENSION NOTICE - ${agencyName} - ${totalFmt} Outstanding - ${maxDays}+ Days Overdue`, body: `<div style="${base}"><p>Dear ${agencyName} Billing / Leadership,</p><p>The outstanding invoices below have now exceeded 60 days past due. Independence Health Contractors is formally suspending acceptance of all new patient referrals from ${agencyName}.</p>${invoiceTable}${lateFeeNotice}${sig}</div>` };
