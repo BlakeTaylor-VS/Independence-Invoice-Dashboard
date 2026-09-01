@@ -199,6 +199,10 @@ tfoot td { border-top: 2px solid var(--teal); background: #EEF0FB; }
 .history-grid { gap: 12px; background: transparent; border: none; }
 .sum-val { font-weight: 700; }
 
+/* DATE SENT INPUT */
+.sent-date-input { font-family: var(--sans); font-size: 12px; border: 1px solid var(--line); border-radius: 4px; padding: 3px 5px; background: #fff; color: #111; width: 130px; }
+.sent-date-input:invalid, .sent-date-input:not([value]), .sent-date-input[value=""] { border-color: #E8A020; background: rgba(232,160,32,.08); }
+
 /* DAYS OVERDUE BADGES */
 .days-badge { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; font-weight: 700; font-family: var(--sans); display: inline-block; white-space: nowrap; }
 .days-60 { background: rgba(217,79,44,.18); color: #9A1010; }
@@ -408,6 +412,7 @@ tfoot td { border-top: 2px solid var(--teal); background: #EEF0FB; }
           <th onclick="sortBy('date')">Date <span id="arrow-date"></span></th>
           <th onclick="sortBy('num')">Invoice # <span id="arrow-num"></span></th>
           <th onclick="sortBy('name')">Contractor <span id="arrow-name"></span></th>
+          <th style="cursor:default">Date Sent</th>
           <th onclick="sortBy('due')">Due Date <span id="arrow-due"></span></th>
           <th class="num-h" onclick="sortBy('amount')">Amount <span id="arrow-amount"></span></th>
           <th class="num-h" onclick="sortBy('open')">Open Balance <span id="arrow-open"></span></th>
@@ -601,11 +606,59 @@ let DATA = JSON.parse(JSON.stringify(SEED));
 let UPLOADS = [{ name: 'Independence_Health_Contractors (seed)', date: new Date().toLocaleDateString(), count: SEED.length }];
 let sortKey = 'date', sortDir = 1, statusFilter = '';
 
+// ── DATE SENT ─────────────────────────────────────────────────────────────────
+// Christine manually confirms the date she actually emails each invoice. Stored
+// server-side (keyed by invoice #) so it's shared between her and Joe and
+// survives the QuickBooks re-sync, which otherwise wipes SEED/DATA wholesale.
+// Once set, it becomes the official start of the 30-day due-date clock — the
+// Due Date column and every overdue/late-fee calculation recompute from it.
+let SENT_DATES = {};
+async function loadSentDates() {
+  try {
+    const res = await fetch('/api/date-sent');
+    SENT_DATES = res.ok ? await res.json() : {};
+  } catch (e) { SENT_DATES = {}; }
+  applySentDates();
+}
+function applySentDates() {
+  DATA.forEach(r => {
+    const s = SENT_DATES[r.num];
+    if (s) { r.sent = s; r.due = addDays(s, 30); }
+    else { delete r.sent; }
+  });
+}
+function sentCellHTML(r) {
+  const val = r.sent || '';
+  return `<input type="date" class="sent-date-input" value="${toInputDate(val)}" onclick="event.stopPropagation()" onchange="saveSentDate('${r.num}', this.value)" title="Date this invoice was emailed to the agency">`;
+}
+function toInputDate(mdY) {
+  if (!mdY) return '';
+  const [m,d,y] = mdY.split('/');
+  return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+}
+function fromInputDate(yMd) {
+  const [y,m,d] = yMd.split('-');
+  return `${m}/${d}/${y}`;
+}
+async function saveSentDate(num, inputValue) {
+  const sentDate = inputValue ? fromInputDate(inputValue) : '';
+  try {
+    await fetch('/api/date-sent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ num, sentDate }) });
+    if (sentDate) SENT_DATES[num] = sentDate; else delete SENT_DATES[num];
+    applySentDates();
+    renderDashboard();
+    if (document.getElementById('tab-agency').classList.contains('active')) renderAgencyView();
+    showToast(sentDate ? `Date sent saved for invoice #${num} ✓` : `Date sent cleared for invoice #${num}`);
+  } catch (e) { showToast('Could not save date sent — check connection', 'var(--rust)'); }
+}
+
 // ── HELPERS ──────────────────────────────────────────────────────────────────
 const fmt = n => '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtShort = n => n >= 1e6 ? '$' + (n/1e6).toFixed(1) + 'M' : n >= 1e3 ? '$' + (n/1e3).toFixed(0) + 'K' : fmt(n);
 const parseAmt = s => parseFloat(String(s).replace(/[$,]/g, '')) || 0;
 function toDate(s) { const [m,d,y] = s.split('/').map(Number); return new Date(y, m-1, d); }
+function fmtDateStr(d) { return String(d.getMonth()+1).padStart(2,'0') + '/' + String(d.getDate()).padStart(2,'0') + '/' + d.getFullYear(); }
+function addDays(dateStr, n) { const d = toDate(dateStr); d.setDate(d.getDate() + n); return fmtDateStr(d); }
 function monthKey(s) { const [m,,y] = s.split('/'); return `${y}-${m.padStart(2,'0')}`; }
 function monthLabel(k) { const [y,m] = k.split('-'); return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+m-1] + ' ' + y; }
 function rowStatus(r) { if (r.open <= 0) return 'paid'; if (r.open >= r.amount) return 'open'; return 'partial'; }
@@ -723,14 +776,14 @@ function renderDashboard() {
   const tbody = document.getElementById('table-body');
   tbody.innerHTML = '';
   if (rows.length === 0) {
-    tbody.innerHTML = '<tr class="no-results"><td colspan="7">No invoices match these filters.</td></tr>';
+    tbody.innerHTML = '<tr class="no-results"><td colspan="9">No invoices match these filters.</td></tr>';
     return;
   }
   rows.forEach(r => {
     const st = rowStatus(r);
     const days = daysOverdue(r.due);
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${r.date}</td><td>${r.num}</td><td class="name-col">${r.name}</td><td>${r.due}</td><td class="num-col">${fmt(r.amount)}</td><td class="num-col">${fmt(r.open)}</td><td><span class="badge ${st}">${st}</span></td><td>${r.open > 0 && days > 0 ? daysBadge(days) : '<span style="font-family:var(--sans);font-size:11px;color:#9a9182">—</span>'}</td>`;
+    tr.innerHTML = `<td>${r.date}</td><td>${r.num}</td><td class="name-col">${r.name}</td><td>${sentCellHTML(r)}</td><td>${r.due}</td><td class="num-col">${fmt(r.amount)}</td><td class="num-col">${fmt(r.open)}</td><td><span class="badge ${st}">${st}</span></td><td>${r.open > 0 && days > 0 ? daysBadge(days) : '<span style="font-family:var(--sans);font-size:11px;color:#9a9182">—</span>'}</td>`;
     tbody.appendChild(tr);
   });
 }
@@ -1041,6 +1094,7 @@ function renderHistory() {
 function resetProject() {
   if (!confirm('Reset all data to the original seed? This cannot be undone.')) return;
   DATA = JSON.parse(JSON.stringify(SEED));
+  applySentDates();
   UPLOADS = [{ name: 'Seed data restored', date: new Date().toLocaleDateString(), count: SEED.length }];
   initDropdowns();
   renderHistory();
@@ -1098,6 +1152,7 @@ async function syncData() {
       if (r.num && !existingNums.has(r.num)) { DATA.push(r); added++; }
     });
 
+    applySentDates();
     initDropdowns();
     renderDashboard();
     if (document.getElementById('tab-agency').classList.contains('active')) renderAgencyView();
@@ -1175,9 +1230,12 @@ async function fetchGmailUser() {
   initGmailStatus(); showToast('Gmail connected ✓ · ' + (gmailUser || 'AP@'));
 }
 function calcLateFee(openAmount, days) {
-  if (days < 31) return { fees: 0, total: openAmount };
+  // Per contract terms: a 3% late fee applies as soon as an invoice is past due
+  // (i.e. 31 days after it was sent, given standard 30-day terms — see Date Sent),
+  // then an additional $50 plus 3% compounding is added every 7 days after that.
+  if (days < 1) return { fees: 0, total: openAmount };
   let balance = openAmount * 1.03;
-  const cycles = Math.floor((days - 31) / 7);
+  const cycles = Math.floor((days - 1) / 7);
   for (let i = 0; i < cycles; i++) { balance = (balance + 50) * 1.03; }
   return { fees: balance - openAmount, total: balance };
 }
@@ -1185,7 +1243,7 @@ function buildAgencyEmail(agencyName, invoices) {
   const totalOpen = invoices.reduce((s, r) => s + r.open, 0);
   const maxDays = agencyMaxDays(invoices);
   const totalFmt = fmt(totalOpen);
-  const isPastDue = maxDays >= 30;
+  const isPastDue = maxDays >= 1;
   const rowColor = isPastDue ? '#b91c1c' : '#15803d';
   let totalWithFees = 0;
   const rows = invoices.map(r => {
@@ -1199,13 +1257,14 @@ function buildAgencyEmail(agencyName, invoices) {
   const tableHeader = isPastDue ? `<tr style="background:#f3f4f6;"><th style="padding:7px 10px;text-align:left;">Invoice</th><th style="padding:7px 10px;text-align:left;">Due Date</th><th style="padding:7px 10px;text-align:left;">Status</th><th style="padding:7px 10px;text-align:left;">Original Open</th><th style="padding:7px 10px;text-align:left;">Late Fees Accrued</th><th style="padding:7px 10px;text-align:left;">New Total Due</th></tr>` : `<tr style="background:#f3f4f6;"><th style="padding:7px 10px;text-align:left;">Invoice</th><th style="padding:7px 10px;text-align:left;">Due Date</th><th style="padding:7px 10px;text-align:left;">Billed</th><th style="padding:7px 10px;text-align:left;">Open Balance</th><th style="padding:7px 10px;text-align:left;">Status</th></tr>`;
   const invoiceTable = `<table style="border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:13px;margin:10px 0;"><thead>${tableHeader}</thead><tbody>${rows}</tbody></table><p style="font-family:Arial,sans-serif;font-size:13px;color:${rowColor};font-weight:bold;">Total Outstanding (Original): ${totalFmt}${isPastDue ? ` &nbsp;|&nbsp; Total With Late Fees: ${fmt(totalWithFees)}` : ''}</p>`;
   const discountNotice = `<p style="font-family:Arial,sans-serif;font-size:15px;font-weight:bold;color:#15803d;margin:18px 0;padding:12px 16px;border:2px solid #15803d;border-radius:6px;">EARLY PAYMENT DISCOUNT: If your agency has maintained good standing, you are eligible to earn a 2% discount by paying this invoice in full within 30 days of the invoice date.</p>`;
-  const lateFeeNotice = `<p style="font-family:Arial,sans-serif;font-size:13px;font-weight:bold;color:#b91c1c;margin:16px 0;padding:12px 16px;border:2px solid #b91c1c;border-radius:6px;">LATE FEE NOTICE: Per the Invoicing and Payment Terms of your signed contract, a 3% late fee was applied at 31 days past due, and an additional $50.00 plus 3% (compounding) is added every 7 days thereafter until paid in full.</p>`;
+  const lateFeeNotice = `<p style="font-family:Arial,sans-serif;font-size:13px;font-weight:bold;color:#b91c1c;margin:16px 0;padding:12px 16px;border:2px solid #b91c1c;border-radius:6px;">LATE FEE NOTICE: Per the Invoicing and Payment Terms of your signed contract, a 3% late fee applies as soon as an invoice becomes past due (31 days from the invoice date), and an additional $50.00 plus 3% (compounding) is added every 7 days thereafter until paid in full.</p>`;
   const sig = `<p style="font-family:Arial,sans-serif;font-size:13px;margin-top:24px;">Sincerely,<br><strong>Christine Woods</strong><br>Accounts Receivable Manager | Independence Health Contractors<br>AP@independencehealthc.com | (513) 532-9819</p>`;
   const base = `font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#111;max-width:680px;`;
   if (maxDays >= 60) return { subject: `SERVICE SUSPENSION NOTICE - ${agencyName} - ${totalFmt} Outstanding - ${maxDays}+ Days Overdue`, body: `<div style="${base}"><p>Dear ${agencyName} Billing / Leadership,</p><p>The outstanding invoices below have now exceeded 60 days past due. Independence Health Contractors is formally suspending acceptance of all new patient referrals from ${agencyName}.</p>${invoiceTable}${lateFeeNotice}${sig}</div>` };
-  if (maxDays >= 45) { const dts = 60-maxDays; return { subject: `URGENT PAST DUE NOTICE - ${agencyName} - ${totalFmt} Outstanding - ${maxDays} Days Past Due`, body: `<div style="${base}"><p>Dear ${agencyName} Billing Team,</p><p>The outstanding balance below has reached ${maxDays} days past due. Your agency is approaching the 60-day threshold — if unresolved within ${dts} days, we will be required to halt new patient referrals.</p>${invoiceTable}${lateFeeNotice}${sig}</div>` }; }
+  if (maxDays >= 50) return { subject: `FINAL NOTICE - ${agencyName} - ${totalFmt} Outstanding - ${maxDays} Days Past Due`, body: `<div style="${base}"><p>Dear ${agencyName} Billing Team,</p><p>Final notice: the outstanding balance below has reached ${maxDays} days past due. If this is not resolved within 10 business days, we will be required to suspend acceptance of new patient referrals from ${agencyName}.</p>${invoiceTable}${lateFeeNotice}${sig}</div>` };
+  if (maxDays >= 40) return { subject: `URGENT PAST DUE NOTICE - ${agencyName} - ${totalFmt} Outstanding - ${maxDays} Days Past Due`, body: `<div style="${base}"><p>Dear ${agencyName} Billing Team,</p><p>This is an urgent follow-up: the outstanding balance below has reached ${maxDays} days past due and requires immediate attention. Please respond within 10 business days.</p>${invoiceTable}${lateFeeNotice}${sig}</div>` };
   if (maxDays >= 30) return { subject: `Independence Past Due Invoice Notice - ${agencyName} - ${totalFmt} Outstanding`, body: `<div style="${base}"><p>Dear ${agencyName} Billing Team,</p><p>The invoices below have passed their 30-day due date and require your immediate attention.</p>${invoiceTable}${lateFeeNotice}${sig}</div>` };
-  if (maxDays >= 1) return { subject: `Independence Invoice Payment Reminder - ${agencyName} - ${totalFmt} Outstanding`, body: `<div style="${base}"><p>Hi ${agencyName} Billing Team,</p><p>Friendly reminder regarding the outstanding invoices below.</p>${invoiceTable}${discountNotice}${sig}</div>` };
+  if (maxDays >= 1) return { subject: `Independence Past Due Invoice Notice - ${agencyName} - ${totalFmt} Outstanding`, body: `<div style="${base}"><p>Dear ${agencyName} Billing Team,</p><p>The invoices below are now past due. Please remit payment at your earliest convenience.</p>${invoiceTable}${lateFeeNotice}${sig}</div>` };
   return { subject: `New Independence Invoice - ${agencyName} - ${totalFmt}`, body: `<div style="${base}"><p>Good afternoon,</p><p>Please find below our invoice summary for services provided.</p>${invoiceTable}${discountNotice}${sig}</div>` };
 }
 async function createGmailDraftForAgency(agencyName, invoices) {
@@ -1315,7 +1374,8 @@ function renderAgencyView() {
       const subRow = document.createElement('tr');
       subRow.className = 'sub-row';
       subRow.id = `sub-${idx}-${r.num}`;
-      subRow.innerHTML = `<td></td><td>Invoice #${r.num}</td><td style="font-family:var(--sans)">Due: ${r.due}</td><td style="text-align:right;font-family:var(--sans)">Billed: ${fmt(r.amount)}</td><td style="text-align:right;font-family:var(--sans);color:var(--rust);font-weight:600">Open: ${fmt(r.open)}</td><td>${days > 0 ? daysBadge(days) : ''}</td><td colspan="2"></td>`;
+      const sentLabel = r.sent ? `Sent: ${r.sent} · Due: ${r.due}` : `<span style="color:#E8A020">⚠ Date sent not entered</span> · Due: ${r.due}`;
+      subRow.innerHTML = `<td></td><td>Invoice #${r.num}</td><td style="font-family:var(--sans)">${sentLabel}</td><td style="text-align:right;font-family:var(--sans)">Billed: ${fmt(r.amount)}</td><td style="text-align:right;font-family:var(--sans);color:var(--rust);font-weight:600">Open: ${fmt(r.open)}</td><td>${days > 0 ? daysBadge(days) : ''}</td><td colspan="2"></td>`;
       tbody.appendChild(subRow);
     });
   });
@@ -1481,9 +1541,10 @@ function initDisputeTab(){initDisputeAgencySelect();renderDisputeQueue();}
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 const LAST_REFRESH = '08/31/2026 11:23 AM PT';
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
   const el = document.getElementById('last-refresh');
   if (el) el.innerHTML = 'QB Last Refreshed<br>' + LAST_REFRESH;
+  await loadSentDates();
   initDropdowns();
   renderDashboard();
   initGmailStatus();
