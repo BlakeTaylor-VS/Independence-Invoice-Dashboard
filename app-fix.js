@@ -207,4 +207,9 @@
 
   // ── INIT ───────────────────────────────────────────────────────────────────
   document.addEventListener('DOMContentLoaded', async function () {
-    await loadSentDates();
+     await loadSentDates();
+       renderDashboard();
+       if (document.getElementById('tab-agency') && document.getElementById('tab-agency').classList.contains('active')) renderAgencyView();
+     });
+
+   })();
