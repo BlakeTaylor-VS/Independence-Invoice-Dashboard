@@ -2,6 +2,8 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const app = express();
+app.set('trust proxy', 1);
+app.use(require('./iad-guard')());
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
